@@ -1,0 +1,48 @@
+:root {
+  /* Brand */
+  --cs-navy-900: #0b1437;
+  --cs-navy-800: #111c4a;
+  --cs-navy-700: #1b2a63;
+  --cs-accent: #4f46e5;
+  --cs-accent-hover: #4338ca;
+  --cs-accent-active: #3730a3;
+  --cs-accent-soft: #eef2ff;
+
+  /* Surfaces and text */
+  --cs-bg: #f5f7fb;
+  --cs-surface: #ffffff;
+  --cs-border: #e3e8f0;
+  --cs-text: #0f172a;
+  --cs-muted: #5b6b82;
+
+  /* Semantic status */
+  --cs-success: #15803d;
+  --cs-success-soft: #dcfce7;
+  --cs-warning: #b45309;
+  --cs-warning-soft: #fef3c7;
+  --cs-danger: #b91c1c;
+  --cs-danger-soft: #fee2e2;
+  --cs-info: #0369a1;
+  --cs-info-soft: #e0f2fe;
+  --cs-neutral-soft: #e8ecf3;
+
+  /* Shape and layout */
+  --cs-radius: 10px;
+  --cs-radius-sm: 6px;
+  --cs-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --cs-sidebar-w: 248px;
+  --cs-sidebar-w-collapsed: 68px;
+  --cs-topbar-h: 60px;
+
+  /* Bootstrap overrides */
+  --bs-primary: #4f46e5;
+  --bs-primary-rgb: 79, 70, 229;
+  --bs-link-color: #4338ca;
+  --bs-link-color-rgb: 67, 56, 202;
+  --bs-link-hover-color: #3730a3;
+  --bs-body-bg: var(--cs-bg);
+  --bs-body-color: var(--cs-text);
+  --bs-border-color: var(--cs-border);
+  --bs-border-radius: var(--cs-radius-sm);
+  --bs-font-sans-serif: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
