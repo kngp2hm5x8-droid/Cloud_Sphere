@@ -36,6 +36,7 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/v1/recommendations`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/spot-requests`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/notifications`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/support/tickets`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -266,6 +267,30 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   const foreignNotificationId = notificationIds.find((item) => item.user_id !== user.user_id).notification_id;
   const foreignMarkRead = await fetch(`${base}/api/v1/notifications/${foreignNotificationId}/read`, { method: 'POST', headers: writeHeaders });
   assert.equal(foreignMarkRead.status, 404, 'users cannot change another user’s notification');
+
+  await adminPool.query(`INSERT INTO support_ticket (created_by,project_id,subject,description,priority)
+    VALUES ($1,$2,'Existing tenant issue','A persisted support ticket for the tenant.','HIGH'),
+      ($3,$4,'Foreign tenant issue','This ticket belongs to another organization.','MEDIUM')`,
+    [user.user_id,project.project_id,fx.bob,fx.globexProj]);
+  const createTicket = await fetch(`${base}/api/v1/support/tickets`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ project_id: String(project.project_id), subject: 'API-created support issue',
+      description: 'Created as part of the API workflow verification.', priority: 'MEDIUM' }) });
+  assert.equal(createTicket.status, 201);
+  const ticket = (await createTicket.json()).data;
+  assert.equal(ticket.status, 'OPEN');
+  assert.equal(ticket.subject, 'API-created support issue');
+  assert.equal(ticket.project_name, 'web-prod');
+  const tickets = (await (await fetch(`${base}/api/v1/support/tickets`, { headers })).json()).data;
+  assert.equal(tickets.length, 2, 'support history should include own and same-organization tickets only');
+  assert.ok(tickets.some((item) => item.ticket_id === ticket.ticket_id));
+  assert.ok(!tickets.some((item) => item.subject === 'Foreign tenant issue'));
+  const foreignTicket = await fetch(`${base}/api/v1/support/tickets`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ project_id: String(fx.globexProj), subject: 'Foreign project issue',
+      description: 'This must be rejected for a different tenant.', priority: 'HIGH' }) });
+  assert.equal(foreignTicket.status, 404);
+  const invalidTicket = await fetch(`${base}/api/v1/support/tickets`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ subject: 'bad', description: 'too short', priority: 'URGENT' }) });
+  assert.equal(invalidTicket.status, 400);
 
   for (const action of ['stop', 'start', 'terminate']) {
     const response = await fetch(`${base}/api/v1/vms/${vm.vm_id}/${action}`, { method: 'POST', headers: writeHeaders });

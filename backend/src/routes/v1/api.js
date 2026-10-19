@@ -429,4 +429,51 @@ router.get('/notifications/unread-count', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/support/tickets', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT t.ticket_id,t.created_by,creator.full_name AS creator_name,
+        t.assigned_to,assignee.full_name AS assignee_name,t.project_id,p.name AS project_name,
+        t.vm_id,vm.name AS vm_name,t.subject,t.description,t.priority,t.status,t.resolved_at,t.created_at,t.updated_at
+      FROM support_ticket t
+      JOIN app_user creator ON creator.user_id=t.created_by
+      LEFT JOIN app_user assignee ON assignee.user_id=t.assigned_to
+      LEFT JOIN project p ON p.project_id=t.project_id
+      LEFT JOIN virtual_machine vm ON vm.vm_id=t.vm_id
+      WHERE ($1::boolean OR t.created_by=$2 OR p.organization_id=$3 OR EXISTS (
+        SELECT 1 FROM project vp WHERE vp.project_id=vm.project_id AND vp.organization_id=$3))
+      ORDER BY t.updated_at DESC,t.ticket_id DESC`, [req.user.role === 'admin',req.user.user_id,req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.post('/support/tickets', async (req, res, next) => {
+  const parsed = z.object({
+    subject: z.string().trim().min(5).max(160),
+    description: z.string().trim().min(10).max(5000),
+    priority: z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).default('MEDIUM'),
+    project_id: z.string().regex(/^[1-9]\d*$/).nullable().optional(),
+    vm_id: z.string().regex(/^[1-9]\d*$/).nullable().optional(),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Support ticket details are invalid.' } });
+  const { subject,description,priority,project_id,vm_id } = parsed.data;
+  try {
+    const { rows } = await query(`INSERT INTO support_ticket (created_by,project_id,vm_id,subject,description,priority)
+      SELECT $1,$2,$3,$4,$5,$6
+      WHERE ($2::bigint IS NULL OR EXISTS (SELECT 1 FROM project p WHERE p.project_id=$2 AND ($7::boolean OR p.organization_id=$8)))
+        AND ($3::bigint IS NULL OR EXISTS (SELECT 1 FROM virtual_machine vm JOIN project p USING(project_id)
+          WHERE vm.vm_id=$3 AND ($2::bigint IS NULL OR vm.project_id=$2) AND ($7::boolean OR p.organization_id=$8)))
+      RETURNING ticket_id`, [req.user.user_id,project_id ?? null,vm_id ?? null,subject,description,priority,
+      req.user.role === 'admin',req.user.organization_id]);
+    if (!rows[0]) return fail(res, 'RESOURCE_UNAVAILABLE', 'The selected project or VM is unavailable.');
+    const ticket = await query(`SELECT t.ticket_id,t.created_by,creator.full_name AS creator_name,
+        t.assigned_to,assignee.full_name AS assignee_name,t.project_id,p.name AS project_name,
+        t.vm_id,vm.name AS vm_name,t.subject,t.description,t.priority,t.status,t.resolved_at,t.created_at,t.updated_at
+      FROM support_ticket t JOIN app_user creator ON creator.user_id=t.created_by
+      LEFT JOIN app_user assignee ON assignee.user_id=t.assigned_to
+      LEFT JOIN project p ON p.project_id=t.project_id LEFT JOIN virtual_machine vm ON vm.vm_id=t.vm_id
+      WHERE t.ticket_id=$1`, [rows[0].ticket_id]);
+    res.status(201).json({ data: ticket.rows[0] });
+  } catch (error) { next(error); }
+});
+
 export default router;
