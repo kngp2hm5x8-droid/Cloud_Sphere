@@ -152,6 +152,13 @@ body { background: var(--cs-bg); letter-spacing: -0.008em; -webkit-font-smoothin
 .cs-badge--neutral { background: var(--cs-neutral-soft); color: #334155; }
 
 .cs-toast-stack { position: fixed; right: 1rem; bottom: 1rem; z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem; max-width: min(380px, calc(100vw - 2rem)); }
+.cs-toast-stack .toast { min-width: min(320px, calc(100vw - 2rem)); box-shadow: 0 10px 28px rgba(16, 47, 77, 0.18); }
+.cs-estimate-placeholder { border: 1px dashed var(--cs-border); border-radius: var(--cs-radius-sm); padding: 1rem; color: var(--cs-muted); font-size: 0.86rem; text-align: center; }
+.cs-confirm-dialog { width: min(480px, calc(100vw - 2rem)); padding: 0; border: 1px solid var(--cs-border); border-radius: var(--cs-radius); color: var(--cs-text); box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28); }
+.cs-confirm-dialog::backdrop { background: rgba(16, 35, 53, 0.52); backdrop-filter: blur(2px); }
+.cs-confirm-dialog-body { padding: 1.5rem; }
+.cs-confirm-dialog h2 { margin: 0; color: var(--cs-navy-900); font-size: 1.15rem; font-weight: 680; }
+.cs-confirm-dialog-description { margin-top: 0.65rem; color: var(--cs-muted); font-size: 0.92rem; line-height: 1.55; }
 
 .cs-dashboard-intro { position: relative; overflow: hidden; padding: 1.45rem 1.6rem; margin-bottom: 1.25rem; border-radius: var(--cs-radius); color: #fff; background: linear-gradient(112deg, #102f4d 0%, #164c69 60%, #168f98 130%); }
 .cs-dashboard-intro::after { content: ''; position: absolute; width: 250px; height: 250px; right: 7%; top: -145px; border: 1px solid rgba(255,255,255,.13); border-radius: 50%; box-shadow: 0 0 0 24px rgba(255,255,255,.035), 0 0 0 48px rgba(255,255,255,.025); pointer-events: none; }
