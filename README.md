@@ -10,7 +10,7 @@ Academic simulation of cloud infrastructure management (React + Vite, Node/Expre
 
 ## Setup (macOS / Homebrew)
 See the Phase 0 steps in the conversation; summary:
-1. `nvm install --lts` and `brew install postgresql@17 && brew services start postgresql@17`
+1. `nvm install --lts` and `brew install postgresql@18 && brew services start postgresql@18`
 2. Create roles/database with `database/scripts/00_bootstrap.sql`
 3. `cd backend && cp .env.example .env` (edit passwords) `&& npm install express pg dotenv cors helmet morgan zod`
 4. `npm run dev`, then `curl localhost:4000/api/health` and `curl localhost:4000/api/health/db`
