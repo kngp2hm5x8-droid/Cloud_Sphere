@@ -103,6 +103,24 @@ router.get('/sla-records', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/recommendations', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT rl.recommendation_id, rl.vm_id, vm.name AS vm_name, vm.project_id,
+        p.name AS project_name, rl.recommendation_type, rl.rule_code, rl.trigger_metrics,
+        rl.window_start, rl.window_end, rl.recommended_vm_configuration_id,
+        cfg.name AS recommended_configuration_name, cfg.vcpu AS recommended_vcpu, cfg.ram_gb AS recommended_ram_gb,
+        rl.estimated_monthly_saving, rl.status, rl.created_at
+      FROM recommendation_log rl
+      JOIN virtual_machine vm USING (vm_id)
+      JOIN project p USING (project_id)
+      LEFT JOIN vm_configuration cfg ON cfg.vm_configuration_id = rl.recommended_vm_configuration_id
+      WHERE ($1::boolean OR p.organization_id = $2)
+      ORDER BY (rl.status = 'PENDING') DESC, rl.created_at DESC, rl.recommendation_id DESC`,
+    [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
 // Read-only storage inventory. Scope volume and snapshot rows through their owning project,
 // keeping the database's organization boundary intact for every customer request.
 router.get('/volumes', async (req, res, next) => {

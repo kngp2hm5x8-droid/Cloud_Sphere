@@ -33,6 +33,7 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/v1/billing/invoices`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/carbon-profiles`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/sla-records`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/recommendations`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -110,6 +111,25 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal(slaRecords[0].vm_name, 'api-web-1');
   assert.equal(slaRecords[0].is_breach, true);
   assert.equal(slaRecords[0].received_samples, 2008);
+
+  await adminPool.query(`INSERT INTO recommendation_log (vm_id,recommendation_type,rule_code,trigger_metrics,
+    window_start,window_end,recommended_vm_configuration_id)
+    SELECT $1,'SCALE_UP','CPU_HIGH_7D','{"avg_cpu_pct":82.5,"p95_cpu_pct":94,"samples":2016}'::jsonb,
+      now()-interval '7 days',now(),vm_configuration_id FROM virtual_machine WHERE vm_id=$1`, [vm.vm_id]);
+  await adminPool.query(`INSERT INTO recommendation_log (vm_id,recommendation_type,rule_code,trigger_metrics,
+    window_start,window_end,estimated_monthly_saving)
+    VALUES ($1,'TERMINATE_IDLE','CPU_IDLE_7D','{"avg_cpu_pct":1.2,"samples":2016}'::jsonb,
+      now()-interval '7 days',now(),42.50)`, [foreignVm.vm_id]);
+  const recommendationsResponse = await fetch(`${base}/api/v1/recommendations`, { headers });
+  assert.equal(recommendationsResponse.status, 200);
+  const recommendations = (await recommendationsResponse.json()).data;
+  assert.equal(recommendations.length, 1, 'recommendations must be scoped to the signed-in organization');
+  assert.equal(recommendations[0].vm_name, 'api-web-1');
+  assert.equal(recommendations[0].rule_code, 'CPU_HIGH_7D');
+  assert.equal(recommendations[0].trigger_metrics.avg_cpu_pct, 82.5);
+  assert.ok(recommendations[0].recommended_vm_configuration_id);
+  assert.equal(recommendations[0].recommended_vcpu, 2);
+  assert.equal(recommendations[0].recommended_ram_gb, 4);
 
   const tenantNetwork = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,name,cidr_block)
     VALUES ($1,$2,'api-vpc','10.20.0.0/16') RETURNING virtual_network_id`, [project.project_id, fx.eu])).rows[0];

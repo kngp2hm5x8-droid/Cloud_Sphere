@@ -29,6 +29,11 @@ const TONE: Record<string, string> = {
   REFUNDED: 'warning',
   BREACH: 'danger',
   COMPLIANT: 'success',
+  SCALE_UP: 'warning',
+  SCALE_DOWN: 'info',
+  TERMINATE_IDLE: 'danger',
+  RIGHTSIZE: 'info',
+  COST_SAVING: 'success',
 };
 
 export default function StatusBadge({ status }: { status: VmState | string }) {
