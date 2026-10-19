@@ -34,6 +34,7 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/v1/carbon-profiles`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/sla-records`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/recommendations`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/spot-requests`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -130,6 +131,35 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok(recommendations[0].recommended_vm_configuration_id);
   assert.equal(recommendations[0].recommended_vcpu, 2);
   assert.equal(recommendations[0].recommended_ram_gb, 4);
+
+  await adminPool.query(`INSERT INTO vm_configuration (name,vcpu,ram_gb,os_family,os_image,is_catalog)
+    VALUES ('api-spot-small',1,2,'LINUX','api-spot-test-image',true)`);
+  const configurations = (await (await fetch(`${base}/api/v1/configurations`, { headers })).json()).data;
+  assert.ok(configurations.length > 0);
+  const spotRequestResponse = await fetch(`${base}/api/v1/spot-requests`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ project_id: String(project.project_id), vm_configuration_id: String(configurations[0].vm_configuration_id),
+      region_id: String(fx.eu), max_price_per_hour: 0.025 }) });
+  assert.equal(spotRequestResponse.status, 201);
+  const spotRequest = (await spotRequestResponse.json()).data;
+  assert.equal(spotRequest.status, 'OPEN');
+  assert.equal(spotRequest.project_name, 'web-prod');
+  assert.equal(spotRequest.region_code, 'eu-north-1');
+  assert.equal(Number(spotRequest.max_price_per_hour), 0.025);
+  const foreignSpotRequest = (await adminPool.query(`INSERT INTO spot_bid_request
+    (project_id,requested_by,vm_configuration_id,max_price_per_hour)
+    VALUES ($1,$2,$3,0.0300) RETURNING bid_id`, [fx.globexProj, fx.bob, configurations[0].vm_configuration_id])).rows[0];
+  const spotRequestsResponse = await fetch(`${base}/api/v1/spot-requests`, { headers });
+  assert.equal(spotRequestsResponse.status, 200);
+  const spotRequests = (await spotRequestsResponse.json()).data;
+  assert.equal(spotRequests.length, 1, 'spot bids must be scoped to the signed-in organization');
+  assert.equal(spotRequests[0].bid_id, spotRequest.bid_id);
+  assert.ok(!spotRequests.some((item) => item.bid_id === foreignSpotRequest.bid_id));
+  const foreignSpotCreate = await fetch(`${base}/api/v1/spot-requests`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ project_id: String(fx.globexProj), vm_configuration_id: String(configurations[0].vm_configuration_id), max_price_per_hour: 0.025 }) });
+  assert.equal(foreignSpotCreate.status, 404, 'customers cannot create bids for another organization');
+  const invalidSpotCreate = await fetch(`${base}/api/v1/spot-requests`, { method: 'POST', headers: writeHeaders,
+    body: JSON.stringify({ project_id: String(project.project_id), vm_configuration_id: String(configurations[0].vm_configuration_id), max_price_per_hour: 0 }) });
+  assert.equal(invalidSpotCreate.status, 400, 'bid price must be positive');
 
   const tenantNetwork = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,name,cidr_block)
     VALUES ($1,$2,'api-vpc','10.20.0.0/16') RETURNING virtual_network_id`, [project.project_id, fx.eu])).rows[0];

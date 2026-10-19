@@ -66,6 +66,60 @@ router.get('/configurations', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Spot bids are persisted requests only. Fulfillment remains a separate operation and never
+// allocates a VM implicitly; any resulting VM must use the existing allocation procedure.
+router.get('/spot-requests', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT b.bid_id,b.project_id,p.name AS project_name,b.requested_by,
+        b.vm_configuration_id,c.name AS configuration_name,c.vcpu,c.ram_gb,c.os_family,
+        b.region_id,r.code AS region_code,r.name AS region_name,b.max_price_per_hour,
+        b.status,b.fulfilled_vm_id,vm.name AS fulfilled_vm_name,b.fulfilled_price_per_hour,
+        b.expires_at,b.fulfilled_at,b.preempted_at,b.created_at,b.updated_at
+      FROM spot_bid_request b JOIN project p USING(project_id)
+      JOIN vm_configuration c USING(vm_configuration_id)
+      LEFT JOIN cloud_region r USING(region_id)
+      LEFT JOIN virtual_machine vm ON vm.vm_id=b.fulfilled_vm_id
+      WHERE ($1::boolean OR p.organization_id=$2)
+      ORDER BY (b.status='OPEN') DESC,b.created_at DESC,b.bid_id DESC`,
+    [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.post('/spot-requests', async (req, res, next) => {
+  const parsed = z.object({
+    project_id: z.string().regex(/^[1-9]\d*$/),
+    vm_configuration_id: z.string().regex(/^[1-9]\d*$/),
+    region_id: z.string().regex(/^[1-9]\d*$/).nullable().optional(),
+    max_price_per_hour: z.number().positive().finite().max(99999999.9999),
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Spot request fields are invalid.' } });
+  const { project_id, vm_configuration_id, region_id, max_price_per_hour } = parsed.data;
+  try {
+    const { rows } = await query(`INSERT INTO spot_bid_request
+        (project_id,requested_by,vm_configuration_id,region_id,max_price_per_hour)
+      SELECT p.project_id,$2,c.vm_configuration_id,$4,$5
+      FROM project p JOIN vm_configuration c ON c.vm_configuration_id=$3 AND c.is_catalog
+      WHERE p.project_id=$1 AND p.status='ACTIVE'
+        AND ($6::boolean OR p.organization_id=$7)
+        AND ($4::bigint IS NULL OR EXISTS (SELECT 1 FROM cloud_region r WHERE r.region_id=$4 AND r.is_active))
+      RETURNING bid_id`, [project_id, req.user.user_id, vm_configuration_id, region_id ?? null,
+      max_price_per_hour, req.user.role === 'admin', req.user.organization_id]);
+    if (!rows[0]) return fail(res, 'RESOURCE_UNAVAILABLE', 'The project, configuration, or region is unavailable.');
+    const bid = await query(`SELECT b.bid_id,b.project_id,p.name AS project_name,b.requested_by,
+        b.vm_configuration_id,c.name AS configuration_name,c.vcpu,c.ram_gb,c.os_family,
+        b.region_id,r.code AS region_code,r.name AS region_name,b.max_price_per_hour,
+        b.status,b.fulfilled_vm_id,vm.name AS fulfilled_vm_name,b.fulfilled_price_per_hour,
+        b.expires_at,b.fulfilled_at,b.preempted_at,b.created_at,b.updated_at
+      FROM spot_bid_request b JOIN project p USING(project_id)
+      JOIN vm_configuration c USING(vm_configuration_id)
+      LEFT JOIN cloud_region r USING(region_id)
+      LEFT JOIN virtual_machine vm ON vm.vm_id=b.fulfilled_vm_id
+      WHERE b.bid_id=$1`, [rows[0].bid_id]);
+    res.status(201).json({ data: bid.rows[0] });
+  } catch (error) { next(error); }
+});
+
 router.get('/quotas', async (req, res, next) => {
   try {
     const { rows } = await query(`SELECT quota_id,organization_id,project_id,max_vcpu,used_vcpu,max_ram_gb,used_ram_gb,max_vms,used_vms,max_storage_gb,used_storage_gb
