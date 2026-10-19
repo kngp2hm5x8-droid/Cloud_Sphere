@@ -1,6 +1,6 @@
 # CloudSphere — Project Handoff Brief
 
-Prepared by Claude on 2026-10-19 for the next AI assistant or engineer. Read this whole file first, then continue from **Section 11 (Next steps)**. Do not ask the owner to re-approve decisions in Section 5; they are final.
+Prepared by Claude on 2026-10-19, **updated later the same day after the database layer was built, run and pushed**. Read this whole file first, then continue from **Section 11 (Next steps)**. Do not ask the owner to re-approve decisions in Section 5; they are final.
 
 ---
 
@@ -31,33 +31,48 @@ Prepared by Claude on 2026-10-19 for the next AI assistant or engineer. Read thi
 
 **Backend deps installed so far:** express, pg, dotenv, cors, helmet, morgan, zod. **Still to add for auth:** `jsonwebtoken`, `cookie-parser`.
 
-**Claude's sandbox (not the owner's machine):** Ubuntu with PostgreSQL **16.15** installed via apt, cluster `16 main` on port 5432. Roles `cloudsphere_migrator` (password `mig`) and `cloudsphere_app` (password `app`), database `cloudsphere` owned by the migrator were created there for testing. The sandbox does not persist between sessions; SQL should be compatible with PostgreSQL 15+ (uses `NULLS NOT DISTINCT`).
+**Claude's sandbox (not the owner's machine; see Section 14, it had no PostgreSQL in the latest session):** an earlier session had Ubuntu with PostgreSQL **16.15** installed via apt, cluster `16 main` on port 5432. Roles `cloudsphere_migrator` (password `mig`) and `cloudsphere_app` (password `app`), database `cloudsphere` owned by the migrator were created there for testing. The sandbox does not persist between sessions; SQL should be compatible with PostgreSQL 15+ (uses `NULLS NOT DISTINCT`).
 
 ---
 
 ## 3. Repository and environment state
 
-**Owner's repo:** `~/Projects/cloudsphere` (moved out of Downloads). Branch `main`. First commit `49a9af2` = "Phase 0: scaffold, health endpoints, DB bootstrap".
-**GitHub repo (created by owner):** https://github.com/kngp2hm5x8-droid/Cloud_Sphere — **not yet confirmed pushed.** Push with: `git remote add origin https://github.com/kngp2hm5x8-droid/Cloud_Sphere.git` then `git push -u origin main` (the owner authenticates).
-**Stage 1 commit:** the owner was instructed to commit `frontend/` and the `backend/src/app.js` CORS change as "Stage 1: frontend shell, auth scaffold, CORS credentials". Unknown whether they did; ask them to run `git status --short` and `git log --oneline`.
+**Owner's repo:** `~/Projects/cloudsphere`, branch `main`, remote `origin` = https://github.com/kngp2hm5x8-droid/Cloud_Sphere (public). **Pushed.** Latest commit at the time of writing: `c2c1c8a` "Database layer: migrations 0001-0008, runner, seed, tests". Earlier commits: Phase 0 scaffold, and the Stage 1 frontend (visible on GitHub). Ask the owner for `git log --oneline` and `git status --short` at the start of a session to confirm nothing is uncommitted.
 
-**Tree (owner's repo):**
+**Tree (as of the last push):**
 ```
 cloudsphere/
-  README.md  .gitignore (ignores node_modules, .env, .env.*, !.env.example, dist)
-  backend/   package.json (type: module; scripts dev=`node --watch src/server.js`, start)
-    .env.example   .env (owner's; DATABASE_URL uses cloudsphere_app; contains their passwords — never commit)
-    src/ server.js app.js config/env.js db/pool.js middleware/errors.js routes/health.js
-         controllers/ services/ utils/ (empty .gitkeep)   tests/ (empty)
-  database/ scripts/00_bootstrap.sql   migrations/ (empty in owner's repo)   seeds/ (empty)
-  docs/ phase1-schema-design.md  CHECKLIST.md
-  frontend/ (Stage 1, see Section 8)
+  README.md (STALE: still says postgresql@17 and has blank version fields)  .gitignore
+  backend/  package.json  .env (owner's, NEVER commit)  .env.example (not yet updated for the new variables)
+    src/ server.js app.js config/env.js db/pool.js middleware/errors.js routes/health.js (Phase 0; no /api/v1 yet)
+         controllers/ services/ utils/ (empty)
+    tests/ allocation|concurrency|lifecycle|partitions|privileges|seed .test.js   tests/helpers/{db,fixture}.js
+  database/
+    migrations/ 0001_foundation .. 0008_grants .sql
+    scripts/ 00_bootstrap.sql  01_bootstrap_test_db.sql  migrate.js  seed.js
+    seeds/ 001_demo.sql
+  docs/ phase1-schema-design.md (needs the D2-retain update)  CHECKLIST.md
+  frontend/ (Stage 1 shell, see Section 8)
 ```
-**Backend `src/app.js`** currently: helmet, `cors({ origin: env.corsOrigin, credentials: true })` (owner applied this fix), `express.json({limit:'1mb'})`, morgan, `/api/health` router, 404 + error handler. Error envelope: `{ error: { code, message } }`. `/api/health` and `/api/health/db` work (verified by the owner).
 
-**Database on owner's Mac:** roles `cloudsphere_migrator` (owns schema, runs migrations) and `cloudsphere_app` (DML only) and database `cloudsphere` were created by `database/scripts/00_bootstrap.sql`. The owner ran it with the placeholder passwords `YourPassword1` (migrator) and `YourPassword2` (app); development only. The bootstrap grants default privileges on tables/sequences to the app role. Schema `public` is owned by the migrator. **No application tables exist yet on the owner's machine.**
+**Backend `package.json` scripts (now):**
+```
+dev      node --watch src/server.js
+start    node src/server.js
+migrate  node ../database/scripts/migrate.js            (uses MIGRATOR_DATABASE_URL)
+migrate:test  node ../database/scripts/migrate.js --test (uses TEST_MIGRATOR_DATABASE_URL)
+seed     node ../database/scripts/seed.js               (uses MIGRATOR_DATABASE_URL)
+test     node --test --test-concurrency=1 'tests/*.test.js'
+```
+`--test-concurrency=1` is REQUIRED: every test file empties the same test database. The quoted glob is required on Node 26 (passing a bare `tests/` directory fails with MODULE_NOT_FOUND).
 
-**Frontend dev:** `cd frontend && npm run dev` → http://localhost:5173. Owner verified the login page renders and the API-unreachable state works. `VITE_API_BASE_URL=http://localhost:4000/api/v1`.
+**`backend/.env` variables in use:** `DATABASE_URL` (cloudsphere_app, dev), `MIGRATOR_DATABASE_URL` (cloudsphere_migrator, dev), `TEST_DATABASE_URL` (cloudsphere_app, `cloudsphere_test`), `TEST_MIGRATOR_DATABASE_URL` (cloudsphere_migrator, `cloudsphere_test`), plus the Phase 0 settings (port 4000, `CORS_ORIGIN`). **Still to add for auth:** `JWT_SECRET` (>=32 chars, `openssl rand -hex 32`) and `COOKIE_SECURE`. `.env.example` must be updated with all of these (placeholders only).
+
+**Databases on the owner's Mac (PostgreSQL 18.6):** roles `cloudsphere_migrator` and `cloudsphere_app` (placeholder dev passwords `YourPassword1` / `YourPassword2` unless changed); databases `cloudsphere` (dev: migrated through 0008 and **seeded with the demo data**) and `cloudsphere_test` (migrated through 0008, emptied by every test run; the helpers refuse to run against any database whose name does not end in `_test`). The owner's session time zone is **IST (+05:30)**, which exposed a test bug (see Section 12).
+
+**Frontend dev:** `cd frontend && npm run dev` -> http://localhost:5173. `VITE_API_BASE_URL=http://localhost:4000/api/v1`.
+
+**Demo accounts (dev seed only), password `Demo@12345` for all:** `admin@cloudsphere.test` (admin), `alice@acme.test`, `bob@acme.test` (Acme Robotics, Premium), `carol@globex.test` (Globex Labs, Basic), `dave@initech.test` (Initech, Standard).
 
 ---
 
@@ -66,9 +81,12 @@ cloudsphere/
 | File | Status |
 |---|---|
 | `cloudsphere-phase0-scaffold.zip` | Delivered; owner unzipped, ran, committed |
-| `phase1-schema-design.md` (revision 2) | Delivered; **partly superseded** — see Section 5 note on D2 |
-| `cloudsphere-frontend-stage1.zip` | Delivered; owner ran it successfully |
-| `HANDOFF.md` (this file) + migrations `0001`–`0006` | Delivered in `cloudsphere-handoff.zip` |
+| `phase1-schema-design.md` (revision 2) | Delivered; **partly superseded** by D2-retain (Section 5 note) |
+| `cloudsphere-frontend-stage1.zip` | Delivered; owner ran it successfully, committed and pushed |
+| `HANDOFF.md` + migrations `0001`-`0006` | Delivered earlier |
+| `cloudsphere-db-layer.zip` | Delivered this session: migrations 0001-0008, `migrate.js`, `seed.js`, `001_demo.sql`, `01_bootstrap_test_db.sql`, six test files and two helpers. Owner unzipped it into the repo, added the npm scripts and `.env` variables, ran everything, committed and pushed |
+| `partitions.test.js` (patched) | Delivered; fixed a time-zone bug in the test helper; owner confirmed it passes |
+| `HANDOFF.md` (this revision) | Delivered |
 
 ---
 
@@ -91,7 +109,7 @@ cloudsphere/
 | **D11** | **Unresolved. The project notes contain no definition.** The number was a gap in Claude's own numbering (Claude had informally used it for "is Neo4j/DA3 required?"). Do not invent a meaning. Does not block implementation. |
 | D12 | Deterministic spot pricing from the on-demand price and regional utilization/discount policy. |
 | D13 | SLA uptime = expected vs received monitoring samples during the VM's running intervals. |
-| D14 | Numbered SQL migration files + a lightweight Node migration runner. **No runner exists yet; it must be written.** |
+| D14 | Numbered SQL migration files + a lightweight Node migration runner. **Done: `database/scripts/migrate.js` (checksummed, one transaction per file, advisory lock, never edits an applied file).** |
 | **A1** | Placement: if a region is given, consider only eligible hosts in it. If not, filter by `ACTIVE` status, free CPU/RAM and quota feasibility, then **prefer the lowest-carbon region**; deterministic tie-break by `host_id`. Never sacrifice capacity/quota correctness for carbon. |
 | **A2** | Support both `project.monthly_budget` (non-negative, persisted) and a per-request `p_max_hourly_budget`. **Monthly projection = 730 hours × compute rate for PROVISIONING/RUNNING VMs, plus storage-only cost for STOPPED VMs and all storage volumes, plus the new request.** The hourly cap is checked separately against the new VM's hourly compute cost. Both server-side. |
 | A3–A12 | Documented defaults in `docs/phase1-schema-design.md` §13 apply (A3 restart placement is now moot under D2-retain; A4 `REQUESTED` not written by allocation; A5 procedures with `INOUT`; A6 stop/start/terminate are DB procedures too; A7 counters protected from direct app-role updates; A8 missing quota row = deny, trigger creates default quota on project insert; A9 whole-partition retention; A10 allocation does not assign subnet/IP; A11 failed attempts audited by Express outside the call; A12 stopped = storage-only billing). |
@@ -123,20 +141,20 @@ Naming: snake_case singular, `User` = `app_user`. PKs are `<name>_id BIGINT GENE
 
 | File | Contents | Status |
 |---|---|---|
-| `0001_foundation.sql` | `pgcrypto`, `set_updated_at()` | written; **applied cleanly to a fresh PostgreSQL 16 database in Claude's sandbox** (not yet run on the owner's PG18) |
-| `0002_identity_catalog.sql` | subscription_plan, cloud_region, organization, app_user (unique lower(email); role CHECK; non-admins need an org), project (`monthly_budget`) | written; **applied cleanly to a fresh PostgreSQL 16 database in Claude's sandbox** (not yet run on the owner's PG18) |
-| `0003_infrastructure.sql` | carbon_profile (versioned, one current per region), cloud_host (generated `free_cpu`/`free_ram_gb`, CHECK allocated ≤ total, partial selection index), vm_configuration, virtual_network (self-FK, subnet-in-parent trigger), firewall_rule, load_balancer | written; **applied cleanly to a fresh PostgreSQL 16 database in Claude's sandbox** (not yet run on the owner's PG18) |
-| `0004_compute.sql` | resource_quota (CHECK used ≤ max, incl. storage), default-quota trigger on project insert, virtual_machine (active states need a host; partial unique name/IP indexes; state-transition trigger), storage_volume, backup_snapshot, resource_allocation_log, spot_bid_request | written; **applied cleanly to a fresh PostgreSQL 16 database in Claude's sandbox** (not yet run on the owner's PG18) |
-| `0005_monitoring.sql` | partitioned `monitoring_log` PK (vm_id, logged_at); `ensure_monitoring_partitions(months_back, months_ahead)` (migration calls it with 2,3 → 6 partitions); `drop_expired_monitoring_partitions(retention_days)` (non-concurrent DETACH, because `DETACH ... CONCURRENTLY` cannot run in a function) | written; applied cleanly in sandbox. Partition routing/pruning/retention tests **not yet written** |
-| `0006_billing_support.sql` | billing_invoice (`UNIQUE NULLS NOT DISTINCT` on org/project/type/period), payment (simulated only), support_ticket, customer_feedback, audit_log, notification_queue (+`title`, `read_at`, `dedupe_key`), recommendation_log, sla_record (generated `is_breach`) | written; applied cleanly in sandbox |
-| `0007_routines.sql` | stored procedures and triggers (Section 7) | not written |
-| `0008_grants.sql` | privileges (Section 7) | not written |
+| `0001_foundation.sql` | `pgcrypto`, `set_updated_at()` | **Applied and verified on the owner's PostgreSQL 18** (dev `cloudsphere` and test `cloudsphere_test`) |
+| `0002_identity_catalog.sql` | subscription_plan, cloud_region, organization, app_user (unique lower(email); role CHECK; non-admins need an org), project (`monthly_budget`) | **Applied and verified on the owner's PG18** (dev + test) |
+| `0003_infrastructure.sql` | carbon_profile (versioned, one current per region), cloud_host (generated `free_cpu`/`free_ram_gb`, CHECK allocated ≤ total, partial selection index), vm_configuration, virtual_network (self-FK, subnet-in-parent trigger), firewall_rule, load_balancer | **Applied and verified on the owner's PG18** (dev + test) |
+| `0004_compute.sql` | resource_quota (CHECK used ≤ max, incl. storage), default-quota trigger on project insert, virtual_machine (active states need a host; partial unique name/IP indexes; state-transition trigger), storage_volume, backup_snapshot, resource_allocation_log, spot_bid_request | **Applied and verified on the owner's PG18** (dev + test) |
+| `0005_monitoring.sql` | partitioned `monitoring_log` PK (vm_id, logged_at); `ensure_monitoring_partitions(months_back, months_ahead)` (migration calls it with 2,3 → 6 partitions); `drop_expired_monitoring_partitions(retention_days)` (non-concurrent DETACH, because `DETACH ... CONCURRENTLY` cannot run in a function) | **Applied on PG18.** Partition routing, UTC bounds, pruning, idempotent maintenance and retention are covered by `partitions.test.js` (passing) |
+| `0006_billing_support.sql` | billing_invoice (`UNIQUE NULLS NOT DISTINCT` on org/project/type/period), payment (simulated only), support_ticket, customer_feedback, audit_log, notification_queue (+`title`, `read_at`, `dedupe_key`), recommendation_log, sla_record (generated `is_breach`) | **Applied on PG18** (dev + test) |
+| `0007_routines.sql` | stored procedures and triggers (Section 7) | **Written, applied on PG18, behaviour-tested** by the allocation, lifecycle, concurrency and seed tests (all passing) |
+| `0008_grants.sql` | privileges (Section 7) | **Written, applied on PG18, behaviour-tested** by `privileges.test.js` (passing) |
 
 All 26 tables: subscription_plan, organization, app_user, project, cloud_region, cloud_host, vm_configuration, virtual_machine, storage_volume, virtual_network, firewall_rule, load_balancer, monitoring_log, resource_allocation_log, backup_snapshot, billing_invoice, payment, support_ticket, customer_feedback, audit_log, recommendation_log, resource_quota, spot_bid_request, carbon_profile, sla_record, notification_queue.
 
 ---
 
-## 7. Routines, locking and privileges (design to implement in 0007/0008)
+## 7. Routines, locking and privileges (implemented in 0007/0008 and tested)
 
 **Active-state flag (D2-retain):** `active = state IN ('PROVISIONING','RUNNING','STOPPED')`. Host `allocated_cpu/allocated_ram_gb` and quota `used_vcpu/used_ram_gb/used_vms` count active VMs. `used_storage_gb` counts non-deleted volumes allocated through the routines (root volume at allocation).
 
@@ -199,18 +217,28 @@ Seed script runs as the migrator, idempotent (skips if `Acme Robotics` exists). 
 - **Reconciliation query (must return zero differences after seeding and after every test):** per host, `allocated_cpu/ram_gb` = sum over active VMs; per quota row, `used_*` = same sums and `used_vms` = count of active VMs; `used_storage_gb` = sum of non-deleted allocated volumes.
 - **Test cases to make demonstrable:** success; insufficient capacity (e.g. 128 vCPU in ap-south-1); quota failure (Globex sandbox); budget failure; carbon preference (no region → eu-north-1).
 
+**Implementation status (done):** `database/seeds/001_demo.sql` runs as the migrator in ONE transaction, is idempotent (does nothing if `Acme Robotics` exists), creates every sample VM through the real routines, and aborts itself if the reconciliation check finds any difference. Seeded VMs: `web-1`, `web-2`, `web-win` (RUNNING), `etl-batch` (STOPPED), `report-worker` (PROVISIONING), `old-staging` (TERMINATED), `batch-render` (RUNNING), `spot-render` (RUNNING, spot), `sbx-api` (STOPPED), `sbx-db`, `it-wiki` (RUNNING). Monitoring: formula-driven samples for `web-1` (high CPU, with an 8-sample gap), `web-2` and `it-wiki` over 7 days, plus 24 hourly rows in the previous month; also two recommendations, an SLA breach record, a PAID subscription and an ISSUED usage invoice, a ticket with feedback, notifications, spot bids, a network/subnet/firewall/load balancer and a snapshot for web-prod. `seed.test.js` proves each rule fires as the API role.
+**Deviations from the plan above (deliberate):** no "next month" monitoring row (it would be a future timestamp in charts); the spot VM is flagged with a plain `UPDATE ... SET is_spot = true` because `allocate_resource` has no spot parameter; the capacity-failure demo uses **22 vCPU in eu-north-1** (the literal 128 vCPU request fails on quota first, CS002); the budget-failure demo is a second `it-wiki`-sized VM for Dave (projected 173.04 > 150.00); one low-capacity notification for `use-host-02` is created through the real trigger; `use-host-01` is briefly set DRAINING during seeding so the big VM lands on `use-host-02` (status changes never touch counters).
+
 ---
 
 ## 11. Next steps (in order)
 
-1. **Write migrations `0007`–`0008`** (Section 7; `0001`–`0006` already exist and apply cleanly), write the **migration runner** `database/scripts/migrate.js` (applies `database/migrations/*.sql` in filename order inside one transaction per file, records them in a `schema_migrations` table, uses `MIGRATOR_DATABASE_URL`; never drops anything), add `npm run migrate` / `npm run seed`. Update `.env.example` (`MIGRATOR_DATABASE_URL`, `JWT_SECRET`, `COOKIE_SECURE`).
-2. **Run them for real** against a clean database (Claude's sandbox PG16 and the owner's PG18) and fix errors. Write seeds (`database/seeds/001_demo.sql`) and run the reconciliation query.
-3. **Write and run tests:** allocation success/capacity/quota/budget/invalid request, rollback after a simulated failure, stop/start/terminate release-exactly-once, concurrent allocations (invariants hold), partition routing and pruning, privilege checks (app role cannot update counters).
-4. **Backend foundation + auth + endpoints** (Section 9). Test with `curl`/Postman against the running server.
-5. **Frontend Stage 2** on top of the existing scaffold (do not rebuild it), running `npm run typecheck` and `npm run build` after each significant change: connect login (already coded), dashboard (already queries), projects (list with search/filter/pagination, create, edit, detail with quota meters), VM list/detail with lifecycle actions and confirm dialogs (disable invalid actions, show backend errors), the **7-step provisioning wizard** (project → configuration → storage → placement → pricing/budget estimate → review → result), monitoring charts with Recharts from `monitoring_log` (real empty/no-data states, no random values). Then supporting modules as time allows.
-6. Update `docs/phase1-schema-design.md` for D2-retain; update `README.md`/`docs/CHECKLIST.md`; add API endpoint list and demo accounts to the README.
-7. Test the central workflow in the real stack and report exactly what works and what remains disconnected.
-8. Ensure the owner commits and pushes to GitHub regularly.
+**Done and verified by the owner on their Mac (PG18):** migrations 0001-0008 applied to dev and test databases; demo seed ran with its built-in reconciliation reporting zero differences; **all 71 tests pass** (`npm test`); committed and pushed as `c2c1c8a` (the patched `partitions.test.js` was copied in and the full suite re-run green before that commit).
+
+Remaining, in order:
+
+1. **Backend foundation + auth.** `npm install jsonwebtoken cookie-parser`. Mount `/api/v1` next to `/api/health`. Add `JWT_SECRET`/`COOKIE_SECURE` to `env.js`, `.env` and `.env.example`. Auth middleware that re-loads the user from the DB on every request (active flag, organization), role middleware, the `X-Requested-With` CSRF check on non-GET requests, zod validation, SQLSTATE -> HTTP error mapping (Section 6 table; 40P01/40001 are retried by the caller, 23505 -> 409). Endpoints: `POST /auth/login` (password check in SQL with `crypt`), `GET /auth/me`, `POST /auth/logout`.
+2. **Endpoints in the priority order of Section 9**, starting with `GET /dashboard/summary`, projects, `GET /regions|/configurations|/quotas`, then `POST /vms` (allocate + complete_provisioning), `GET /vms`, `GET /vms/:id`, `POST /vms/:id/start|stop|terminate`, `POST /vms/estimate` (wraps `estimate_vm_cost`), `GET /vms/:id/metrics`, `GET /monitoring/summary`, `GET /hosts` (admin), `GET /notifications/unread-count`. Test each against the seeded dev database with curl/Postman and add `supertest`-free API tests only if time allows (do not add libraries for purity).
+3. **Frontend Stage 2** on the existing scaffold (do not rebuild it): login, dashboard, projects, VM list/detail with lifecycle actions, the 7-step provisioning wizard, monitoring charts from `monitoring_log`. Run `npm run typecheck` and `npm run build` after each significant change.
+4. Update `docs/phase1-schema-design.md` for D2-retain; refresh `README.md` (PostgreSQL version, scripts, demo accounts, API list, how to run tests); update `docs/CHECKLIST.md`; update `.env.example`.
+5. Test the central workflow in the real stack (login -> project -> request VM -> inspect -> monitoring) and report exactly what works and what remains disconnected.
+6. Remind the owner to commit and push regularly, and never commit `.env`.
+
+**Constraints the API layer must respect (found while reviewing the routines):**
+- `0008_grants.sql` grants the API role `EXECUTE` on `complete_provisioning`, `fail_provisioning` and `preempt_vm`, and none of the three checks who is calling (only `stop_vm`, `start_vm`, `terminate_vm` and `allocate_resource` authorise the user against the project). **Express must enforce who may trigger them**: `complete_provisioning` only server-side straight after a successful allocation; `fail_provisioning` and `preempt_vm` admin-only or system-only. Never expose them as customer endpoints.
+- Customer authorisation is by organization: always pass the caller's own `user_id` from the verified session to the routines; never trust a submitted user or organization id.
+- Call `allocate_resource` with `NULL::bigint` for the INOUT argument; the new id comes back as `rows[0].p_vm_id` (a string). The test helper `tests/helpers/db.js` (`allocate`, `allocateWithRetry`) is the working reference for the exact `CALL` statement and the retry loop on 40P01/40001.
 
 ---
 
@@ -225,6 +253,13 @@ Seed script runs as the migrator, idempotent (skips if `Acme Robotics` exists). 
 - Date references: the conversation date is Mon 19 Oct 2026; owner screenshots show Sun 18 Oct 10 PM local.
 - Health endpoint `/api/health/db` exposes the Postgres version (development convenience only).
 - There is no `/api/v1` yet, so the frontend dashboard shows "not available yet" and login shows "sign-in service not available" until the backend work is done.
+- **Time zones:** the owner's Mac is on IST (+05:30). `to_char(timestamptz, ...)` formats in the *session* time zone, so a hand-built string like `..."+00"` is wrong unless the value is a plain UTC `timestamp`. The partitions test helper had exactly this bug (fixed). In the API, always accept and return ISO-8601 timestamps with an explicit offset (UTC) and never depend on the server's local time zone. The production partition function already builds its bounds in UTC.
+- **Node 26 test runner:** `node --test tests/` (a bare directory) fails with `MODULE_NOT_FOUND`; use the quoted glob `'tests/*.test.js'` and `--test-concurrency=1`.
+- `npm pkg set scripts.name="..."` is the simplest way to edit `package.json` scripts from the Terminal without an editor.
+- `.env` additions are easiest as `echo "KEY=value" >> .env` one line at a time (run `echo "" >> .env` first so the file ends with a newline).
+- Uploaded test files arrive with mangled names (`allocation_test.js`); the real names are `*.test.js` and the helpers live in `backend/tests/helpers/`.
+- The migration runner refuses to continue if an already-applied migration file changed on disk. Never edit an applied migration; add `0009_...sql` instead. (Both databases are already past 0008.)
+- `fail_provisioning` / `preempt_vm` / `complete_provisioning` take no caller check; see Section 11 constraints.
 
 ---
 
@@ -234,16 +269,22 @@ Seed script runs as the migrator, idempotent (skips if `Acme Robotics` exists). 
 |---|---|
 | Phase 0 backend health endpoints | Run by the owner on macOS (works) |
 | Frontend Stage 1 type check + build | Run by Claude in the sandbox (passed); runs in the owner's browser |
-| Frontend ↔ backend auth | **Not tested** (backend auth not built) |
-| Migrations 0001–0006 | **Applied cleanly to a fresh PostgreSQL 16 in Claude's sandbox** (26 tables, 6 monthly partitions created). Not yet run on the owner's PG18. No behavior tests yet |
-| Migrations 0007–0008 (routines, privileges), seeds, runner | **Not written** |
-| Concurrency/invariant tests | **Not written/run** |
+| Migrations 0001-0008 | **Applied by the owner on PostgreSQL 18.6** to both `cloudsphere` and `cloudsphere_test` with `npm run migrate` / `migrate:test` (all 8 applied, no errors) |
+| Demo seed | **Run by the owner** with `npm run seed`; it printed that reconciliation shows no differences; `seed.test.js` also passes |
+| Test suite | **Owner ran `npm test`: 71 tests, 71 pass, 0 fail** (allocation, concurrency, lifecycle, partitions, privileges, seed). First run had 2 failures caused by a time-zone bug in the test helper (not in the database); fixed and re-run green |
+| Concurrency/invariant tests | Included in the 71: 12 tenants racing for 4 slots, 15 parallel requests for 5 quota slots, racing terminations, 10 concurrent terminates of one VM; all passed with 0 deadlock/serialization retries needed in the owner's run |
+| Frontend <-> backend auth | **Not tested** (backend auth not built) |
 | Any `/api/v1` endpoint | **Not built** |
+| Frontend Stage 2 | **Not started** |
 
-*Open items needing the owner:* confirm Stage 1 was committed; confirm GitHub push; keep `.env` files out of Git; choose real passwords for the database roles before any demo outside their own laptop.
+Claude's own sandbox had no PostgreSQL and no network this session, so Claude executed nothing itself: it only read the files and syntax-checked the JavaScript. Every pass above comes from the owner's terminal output.
+
+*Open items needing the owner:* choose real passwords for the database roles before any demo outside their own laptop; keep `.env` out of Git (the last `git status` showed it correctly absent); push after each milestone.
 
 ---
 
 ## 14. Sandbox helper (Claude's environment only)
 
-`/home/claude/sandbox_setup.sh` restarts sandbox PostgreSQL 16, drops/recreates schema `public`, applies the grants and every `database/migrations/*.sql` as `cloudsphere_migrator` (password `mig`, host localhost). A fresh AI session will not have it; recreate it from Section 2 and the bootstrap SQL in `database/scripts/00_bootstrap.sql` (install PostgreSQL with `apt-get update && apt-get install -y postgresql`, then `pg_ctlcluster 16 main start`).
+An earlier session had a throwaway PostgreSQL 16 in Claude's sandbox. The session that wrote this revision had **no PostgreSQL and no network access** in the sandbox, so do not assume Claude can run the database: verify with the owner's terminal output. If a future sandbox does allow it: `apt-get update && apt-get install -y postgresql`, `pg_ctlcluster 16 main start`, create the roles and database from `database/scripts/00_bootstrap.sql` / `01_bootstrap_test_db.sql`, then use `npm run migrate:test` and `npm test` with the `TEST_*` variables pointing at it.
+
+---
