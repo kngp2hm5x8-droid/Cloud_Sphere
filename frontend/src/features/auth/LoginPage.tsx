@@ -3,7 +3,6 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Cloud } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { ApiError } from '@/lib/api-client';
 
@@ -47,7 +46,7 @@ export default function LoginPage() {
     <div className="cs-auth">
       <div className="cs-card cs-auth-card">
         <div className="text-center mb-4">
-          <div className="cs-brand-mark mx-auto mb-2"><Cloud size={20} color="#fff" aria-hidden /></div>
+          <img className="cs-login-wordmark mb-3" src="/cloudsphere-logo.png" alt="CloudSphere" />
           <h1 className="h4 mb-1">Sign in to CloudSphere</h1>
           <p className="text-muted small mb-0">Academic cloud-management simulation</p>
           {import.meta.env.DEV && <p className="small text-muted mt-2 mb-0">Demo account: <strong>alice@acme.test</strong> · password <strong>Demo@12345</strong></p>}

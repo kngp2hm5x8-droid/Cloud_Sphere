@@ -1,19 +1,19 @@
 :root {
   /* Brand */
-  --cs-navy-900: #0b1437;
-  --cs-navy-800: #111c4a;
-  --cs-navy-700: #1b2a63;
-  --cs-accent: #4f46e5;
-  --cs-accent-hover: #4338ca;
-  --cs-accent-active: #3730a3;
-  --cs-accent-soft: #eef2ff;
+  --cs-navy-900: #102f4d;
+  --cs-navy-800: #153b5c;
+  --cs-navy-700: #1c4a68;
+  --cs-accent: #168f98;
+  --cs-accent-hover: #117b84;
+  --cs-accent-active: #0e6672;
+  --cs-accent-soft: #e3f4f3;
 
   /* Surfaces and text */
-  --cs-bg: #f5f7fb;
+  --cs-bg: #f4f8fa;
   --cs-surface: #ffffff;
-  --cs-border: #e3e8f0;
-  --cs-text: #0f172a;
-  --cs-muted: #5b6b82;
+  --cs-border: #e2eaee;
+  --cs-text: #172b3d;
+  --cs-muted: #637789;
 
   /* Semantic status */
   --cs-success: #15803d;
@@ -27,22 +27,22 @@
   --cs-neutral-soft: #e8ecf3;
 
   /* Shape and layout */
-  --cs-radius: 10px;
-  --cs-radius-sm: 6px;
-  --cs-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --cs-radius: 14px;
+  --cs-radius-sm: 8px;
+  --cs-shadow: 0 2px 8px rgba(16, 47, 77, 0.045);
   --cs-sidebar-w: 248px;
   --cs-sidebar-w-collapsed: 68px;
   --cs-topbar-h: 60px;
 
   /* Bootstrap overrides */
-  --bs-primary: #4f46e5;
-  --bs-primary-rgb: 79, 70, 229;
-  --bs-link-color: #4338ca;
-  --bs-link-color-rgb: 67, 56, 202;
-  --bs-link-hover-color: #3730a3;
+  --bs-primary: #168f98;
+  --bs-primary-rgb: 22, 143, 152;
+  --bs-link-color: #117b84;
+  --bs-link-color-rgb: 17, 123, 132;
+  --bs-link-hover-color: #0e6672;
   --bs-body-bg: var(--cs-bg);
   --bs-body-color: var(--cs-text);
   --bs-border-color: var(--cs-border);
   --bs-border-radius: var(--cs-radius-sm);
-  --bs-font-sans-serif: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --bs-font-sans-serif: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }

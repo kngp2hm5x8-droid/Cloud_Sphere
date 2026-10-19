@@ -20,8 +20,8 @@ export default function AppShell() {
     <div className={`cs-shell ${collapsed ? 'is-collapsed' : ''}`}>
       <aside className={`cs-sidebar ${mobileOpen ? 'is-open' : ''}`} aria-label="Primary">
         <NavLink to="/" className="cs-brand" aria-label="CloudSphere home">
-          <span className="cs-brand-mark"><Cloud size={19} color="#fff" aria-hidden /></span>
-          <span className="cs-brand-name">CloudSphere</span>
+          <span className="cs-brand-mark"><Cloud size={19} aria-hidden /></span>
+          <img className="cs-brand-wordmark" src="/cloudsphere-logo.png" alt="CloudSphere" />
         </NavLink>
         <nav className="cs-nav">
           {groups.map((group) => (

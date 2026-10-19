@@ -7,7 +7,7 @@ CloudSphere is an academic simulation of cloud infrastructure management. It doe
 - `frontend/`: React, TypeScript, Vite, Bootstrap, React Router, TanStack Query, Axios, and Recharts.
 - `backend/`: Express 5 on JavaScript ESM, PostgreSQL through `pg`.
 - `database/`: numbered PostgreSQL migrations, demo seed, and safe test database setup.
-- `docs/`: schema, handoff, checklist.
+- `docs/`: schema, handoff, checklist, and the [Database Systems demo guide](docs/DATABASE_DEMO_GUIDE.md).
 
 ## Local setup
 
