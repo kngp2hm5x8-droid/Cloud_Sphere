@@ -21,6 +21,12 @@ const TONE: Record<string, string> = {
   COMPLETED: 'success',
   PENDING: 'info',
   EXPIRED: 'warning',
+  ALLOW: 'success',
+  DENY: 'danger',
+  INGRESS: 'info',
+  EGRESS: 'neutral',
+  SUCCEEDED: 'success',
+  REFUNDED: 'warning',
 };
 
 export default function StatusBadge({ status }: { status: VmState | string }) {

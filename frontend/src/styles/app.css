@@ -178,6 +178,10 @@ body { background: var(--cs-bg); letter-spacing: -0.008em; -webkit-font-smoothin
 .cs-storage-quota { height: 100%; border: 1px solid var(--cs-border); border-radius: var(--cs-radius-sm); padding: .85rem; }
 .cs-storage-volume-table { min-width: 900px; }
 .cs-storage-snapshot-table { min-width: 900px; }
+.cs-network-table { min-width: 900px; }
+.cs-billing-table { min-width: 1050px; }
+.cs-payment-list { min-width: 220px; display: grid; gap: .5rem; }
+.cs-payment-row { padding: .5rem .6rem; border: 1px solid var(--cs-border); border-radius: var(--cs-radius-sm); background: #fbfcfd; }
 
 @media (max-width: 575.98px) {
   .cs-content { padding-inline: .8rem; }

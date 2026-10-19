@@ -27,6 +27,10 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/health/db`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/volumes`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/snapshots`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/networks`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/firewall-rules`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/load-balancers`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/billing/invoices`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -81,6 +85,49 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok((await list.json()).data.some((item) => item.vm_id === vm.vm_id));
   const detail = await fetch(`${base}/api/v1/vms/${vm.vm_id}`, { headers });
   assert.equal((await detail.json()).data.name, 'api-web-1');
+
+  const tenantNetwork = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,name,cidr_block)
+    VALUES ($1,$2,'api-vpc','10.20.0.0/16') RETURNING virtual_network_id`, [project.project_id, fx.eu])).rows[0];
+  const tenantSubnet = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,parent_network_id,name,cidr_block)
+    VALUES ($1,$2,$3,'api-subnet','10.20.1.0/24') RETURNING virtual_network_id`, [project.project_id, fx.eu, tenantNetwork.virtual_network_id])).rows[0];
+  const foreignNetwork = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,name,cidr_block)
+    VALUES ($1,$2,'foreign-vpc','10.30.0.0/16') RETURNING virtual_network_id`, [fx.globexProj, fx.ap])).rows[0];
+  await adminPool.query(`INSERT INTO firewall_rule (virtual_network_id,direction,action,protocol,port_from,port_to,remote_cidr,priority,description)
+    VALUES ($1,'INGRESS','ALLOW','TCP',443,443,'0.0.0.0/0',100,'HTTPS access'),($2,'INGRESS','DENY','ANY',NULL,NULL,'0.0.0.0/0',1000,'Foreign rule')`,
+    [tenantNetwork.virtual_network_id, foreignNetwork.virtual_network_id]);
+  const loadBalancer = (await adminPool.query(`INSERT INTO load_balancer (project_id,virtual_network_id,name,listener_protocol,listener_port)
+    VALUES ($1,$2,'api-lb','HTTPS',443) RETURNING load_balancer_id`, [project.project_id, tenantNetwork.virtual_network_id])).rows[0];
+  await adminPool.query(`UPDATE virtual_machine SET subnet_id=$2,private_ip='10.20.1.11',load_balancer_id=$3 WHERE vm_id=$1`,
+    [vm.vm_id, tenantSubnet.virtual_network_id, loadBalancer.load_balancer_id]);
+
+  const networks = (await (await fetch(`${base}/api/v1/networks`, { headers })).json()).data;
+  assert.equal(networks.length, 2, 'networks must be scoped to the signed-in organization');
+  assert.equal(networks.find((item) => item.virtual_network_id === tenantSubnet.virtual_network_id).parent_network_name, 'api-vpc');
+  assert.equal(networks.find((item) => item.virtual_network_id === tenantSubnet.virtual_network_id).attached_vm_names, 'api-web-1');
+  assert.equal(networks.find((item) => item.virtual_network_id === tenantNetwork.virtual_network_id).firewall_rule_count, 1);
+  const firewallRules = (await (await fetch(`${base}/api/v1/firewall-rules`, { headers })).json()).data;
+  assert.equal(firewallRules.length, 1);
+  assert.equal(firewallRules[0].remote_cidr, '0.0.0.0/0');
+  const loadBalancers = (await (await fetch(`${base}/api/v1/load-balancers`, { headers })).json()).data;
+  assert.equal(loadBalancers.length, 1);
+  assert.equal(loadBalancers[0].attached_vm_names, 'api-web-1');
+
+  const billingInvoice = (await adminPool.query(`INSERT INTO billing_invoice
+    (organization_id,project_id,invoice_type,period_start,period_end,subtotal,tax_amount,total_amount,status,due_date)
+    VALUES ($1,$2,'USAGE',current_date,current_date+30,25,0,25,'ISSUED',current_date+40) RETURNING invoice_id`,
+    [fx.acme, project.project_id])).rows[0];
+  await adminPool.query(`INSERT INTO payment (invoice_id,amount,method,status,transaction_ref,paid_at)
+    VALUES ($1,10,'SIMULATED_CARD','SUCCEEDED','API-TEST-PAYMENT-1',now())`, [billingInvoice.invoice_id]);
+  const foreignInvoice = await adminPool.query(`INSERT INTO billing_invoice
+    (organization_id,invoice_type,period_start,period_end,subtotal,tax_amount,total_amount,status,due_date)
+    VALUES ($1,'SUBSCRIPTION',current_date,current_date+30,99,0,99,'PAID',current_date+40) RETURNING invoice_id`, [fx.globex]);
+  await adminPool.query(`INSERT INTO payment (invoice_id,amount,method,status,transaction_ref,paid_at)
+    VALUES ($1,99,'SIMULATED_UPI','SUCCEEDED','API-TEST-PAYMENT-FOREIGN',now())`, [foreignInvoice.rows[0].invoice_id]);
+  const invoices = (await (await fetch(`${base}/api/v1/billing/invoices`, { headers })).json()).data;
+  assert.equal(invoices.length, 1, 'invoice listing must stay within the signed-in organization');
+  assert.equal(invoices[0].project_name, 'web-prod');
+  assert.equal(invoices[0].payments.length, 1);
+  assert.equal(invoices[0].payments[0].transaction_ref, 'API-TEST-PAYMENT-1');
 
   // Storage inventory and snapshots use project ownership, not caller-supplied organization IDs.
   const volumeResponse = await fetch(`${base}/api/v1/volumes`, { headers });

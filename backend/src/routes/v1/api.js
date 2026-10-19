@@ -100,6 +100,67 @@ router.get('/snapshots', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Network inventory is read through the owning project so customers only see their organization's
+// networks, rules, and load balancers. Network configuration remains managed by the existing schema.
+router.get('/networks', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT n.virtual_network_id,n.project_id,p.name AS project_name,n.region_id,r.code AS region_code,
+        n.parent_network_id,parent.name AS parent_network_name,n.name,n.cidr_block::text AS cidr_block,n.created_at,
+        count(DISTINCT vm.vm_id)::int AS attached_vm_count,
+        coalesce(string_agg(DISTINCT vm.name, ', ' ORDER BY vm.name) FILTER (WHERE vm.vm_id IS NOT NULL), '') AS attached_vm_names,
+        (SELECT count(*)::int FROM firewall_rule fr WHERE fr.virtual_network_id=n.virtual_network_id) AS firewall_rule_count
+      FROM virtual_network n JOIN project p USING(project_id) JOIN cloud_region r USING(region_id)
+      LEFT JOIN virtual_network parent ON parent.virtual_network_id=n.parent_network_id
+      LEFT JOIN virtual_machine vm ON vm.subnet_id=n.virtual_network_id
+      WHERE ($1::boolean OR p.organization_id=$2)
+      GROUP BY n.virtual_network_id,p.name,r.code,parent.name
+      ORDER BY p.name,n.parent_network_id NULLS FIRST,n.name`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/firewall-rules', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT fr.firewall_rule_id,fr.virtual_network_id,n.name AS network_name,n.cidr_block::text AS network_cidr,
+        n.project_id,p.name AS project_name,fr.direction,fr.action,fr.protocol,fr.port_from,fr.port_to,
+        fr.remote_cidr::text AS remote_cidr,fr.priority,fr.description,fr.created_at
+      FROM firewall_rule fr JOIN virtual_network n USING(virtual_network_id) JOIN project p USING(project_id)
+      WHERE ($1::boolean OR p.organization_id=$2)
+      ORDER BY p.name,n.name,fr.direction,fr.priority,fr.firewall_rule_id`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/load-balancers', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT lb.load_balancer_id,lb.project_id,p.name AS project_name,lb.virtual_network_id,n.name AS network_name,
+        n.cidr_block::text AS network_cidr,lb.name,lb.algorithm,lb.listener_protocol,lb.listener_port,lb.status,lb.created_at,
+        count(DISTINCT vm.vm_id)::int AS attached_vm_count,
+        coalesce(string_agg(DISTINCT vm.name, ', ' ORDER BY vm.name) FILTER (WHERE vm.vm_id IS NOT NULL), '') AS attached_vm_names
+      FROM load_balancer lb JOIN project p USING(project_id) JOIN virtual_network n USING(virtual_network_id)
+      LEFT JOIN virtual_machine vm ON vm.load_balancer_id=lb.load_balancer_id
+      WHERE ($1::boolean OR p.organization_id=$2)
+      GROUP BY lb.load_balancer_id,p.name,n.name,n.cidr_block
+      ORDER BY p.name,lb.name`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/billing/invoices', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT i.invoice_id,i.organization_id,i.project_id,p.name AS project_name,i.invoice_type,
+        i.period_start,i.period_end,i.subtotal,i.tax_amount,i.total_amount,i.usage_breakdown,i.status,i.issued_at,i.due_date,i.created_at,
+        coalesce(jsonb_agg(jsonb_build_object('payment_id',pay.payment_id,'amount',pay.amount,'method',pay.method,
+          'status',pay.status,'transaction_ref',pay.transaction_ref,'paid_at',pay.paid_at,'created_at',pay.created_at)
+          ORDER BY pay.created_at DESC) FILTER (WHERE pay.payment_id IS NOT NULL), '[]'::jsonb) AS payments
+      FROM billing_invoice i LEFT JOIN project p USING(project_id) LEFT JOIN payment pay USING(invoice_id)
+      WHERE ($1::boolean OR i.organization_id=$2)
+      GROUP BY i.invoice_id,p.name
+      ORDER BY i.period_start DESC,i.invoice_id DESC`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
 router.get('/dashboard/summary', async (req, res, next) => {
   try {
     if (req.user.role === 'admin') {
