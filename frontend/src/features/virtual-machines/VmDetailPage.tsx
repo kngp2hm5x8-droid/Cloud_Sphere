@@ -14,7 +14,7 @@ export default function VmDetailPage() {
   const qc = useQueryClient();
   const vm = useQuery({ queryKey: ['vm', vmId], queryFn: ({ signal }) => getData<Vm>(`/vms/${vmId}`, undefined, signal) });
   const metrics = useQuery({ queryKey: ['metrics', vmId], queryFn: ({ signal }) => getData<MetricPoint[]>(`/vms/${vmId}/metrics`, undefined, signal) });
-  const action = useMutation({ mutationFn: (verb: string) => postData(`/vms/${vmId}/${verb}`), onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['vm', vmId] }), qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['metrics', vmId] }), qc.invalidateQueries({ queryKey: ['dashboard'] })]) });
+  const action = useMutation({ mutationFn: (verb: string) => postData(`/vms/${vmId}/${verb}`), onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['vm', vmId] }), qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['metrics', vmId] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['monitoring-summary'] })]) });
   const allowed: string[] = vm.data?.state === 'RUNNING' ? ['stop', 'terminate'] : vm.data?.state === 'STOPPED' ? ['start', 'terminate'] : vm.data && !['TERMINATED','FAILED','PREEMPTED'].includes(vm.data.state) ? ['terminate'] : [];
   return <>
     <PageHeader title={vm.data?.name ?? 'Virtual machine'} subtitle={vm.data ? `${vm.data.project_name} · ${vm.data.region_name ?? 'Region unavailable'}` : 'Instance details and recent monitoring.'}
