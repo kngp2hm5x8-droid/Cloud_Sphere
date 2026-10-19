@@ -133,6 +133,7 @@ body { background: var(--cs-bg); letter-spacing: -0.008em; -webkit-font-smoothin
 
 .cs-meter { height: 8px; background: var(--cs-neutral-soft); border-radius: 4px; overflow: hidden; }
 .cs-meter > span { display: block; height: 100%; background: var(--cs-accent); border-radius: 4px; }
+.cs-meter-compact { height: 5px; min-width: 95px; }
 .cs-meter.is-warn > span { background: #d97706; }
 .cs-meter.is-danger > span { background: var(--cs-danger); }
 
@@ -174,6 +175,9 @@ body { background: var(--cs-bg); letter-spacing: -0.008em; -webkit-font-smoothin
 .cs-table-card .table { --bs-table-bg: transparent; margin-bottom: 0; }
 .cs-table-card .table thead th { background: #f6f9fa; color: #64798a; font-size: .72rem; font-weight: 650; text-transform: uppercase; letter-spacing: .055em; border-bottom-color: var(--cs-border); white-space: nowrap; }
 .cs-table-card .table tbody tr:hover { background: #f8fbfc; }
+.cs-storage-quota { height: 100%; border: 1px solid var(--cs-border); border-radius: var(--cs-radius-sm); padding: .85rem; }
+.cs-storage-volume-table { min-width: 900px; }
+.cs-storage-snapshot-table { min-width: 900px; }
 
 @media (max-width: 575.98px) {
   .cs-content { padding-inline: .8rem; }

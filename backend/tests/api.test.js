@@ -25,6 +25,8 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   const anonymous = await fetch(`${base}/api/v1/auth/me`);
   assert.equal(anonymous.status, 401);
   assert.equal((await fetch(`${base}/api/health/db`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/volumes`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/snapshots`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -79,6 +81,33 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok((await list.json()).data.some((item) => item.vm_id === vm.vm_id));
   const detail = await fetch(`${base}/api/v1/vms/${vm.vm_id}`, { headers });
   assert.equal((await detail.json()).data.name, 'api-web-1');
+
+  // Storage inventory and snapshots use project ownership, not caller-supplied organization IDs.
+  const volumeResponse = await fetch(`${base}/api/v1/volumes`, { headers });
+  assert.equal(volumeResponse.status, 200);
+  const volumes = (await volumeResponse.json()).data;
+  const rootVolume = volumes.find((item) => item.vm_id === vm.vm_id);
+  assert.ok(rootVolume, 'the VM root volume should be visible to its tenant');
+  assert.equal(rootVolume.project_name, 'web-prod');
+  assert.equal(rootVolume.vm_name, 'api-web-1');
+  assert.equal(rootVolume.is_root, true);
+  assert.equal(rootVolume.state, 'ATTACHED');
+
+  const otherTenantVolume = (await adminPool.query(`INSERT INTO storage_volume
+    (project_id,region_id,name,size_gb,volume_type,state) VALUES ($1,$2,'private-volume',20,'SSD','AVAILABLE') RETURNING volume_id`,
+    [fx.globexProj, fx.eu])).rows[0];
+  await adminPool.query(`INSERT INTO backup_snapshot
+    (volume_id,name,status,size_gb,taken_at,retention_days,expires_at,created_by)
+    VALUES ($1,'api-workflow-snapshot','COMPLETED',12,now(),30,now()+interval '30 days',$2)`, [rootVolume.volume_id, user.user_id]);
+  await adminPool.query(`INSERT INTO backup_snapshot
+    (volume_id,name,status,size_gb,taken_at,retention_days,expires_at,created_by)
+    VALUES ($1,'private-snapshot','COMPLETED',8,now(),30,now()+interval '30 days',$2)`, [otherTenantVolume.volume_id, fx.bob]);
+  const snapshotsResponse = await fetch(`${base}/api/v1/snapshots`, { headers });
+  assert.equal(snapshotsResponse.status, 200);
+  const snapshots = (await snapshotsResponse.json()).data;
+  assert.ok(snapshots.some((item) => item.name === 'api-workflow-snapshot' && item.vm_name === 'api-web-1'));
+  assert.ok(!snapshots.some((item) => item.name === 'private-snapshot'), 'snapshot listing must exclude other organizations');
+
   const metrics = await fetch(`${base}/api/v1/vms/${vm.vm_id}/metrics`, { headers });
   assert.deepEqual((await metrics.json()).data, []);
   const summary = await fetch(`${base}/api/v1/monitoring/summary`, { headers });

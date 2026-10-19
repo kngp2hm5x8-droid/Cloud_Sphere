@@ -11,7 +11,7 @@ interface Vm { vm_id: string; project_id: string; project_name: string; name: st
 export default function VmListPage() {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: ['vms'], queryFn: ({ signal }) => getData<Vm[]>('/vms', undefined, signal) });
-  const action = useMutation({ mutationFn: ({ id, verb }: { id: string; verb: string }) => postData(`/vms/${id}/${verb}`), onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['project'] }), qc.invalidateQueries({ queryKey: ['monitoring-summary'] })]) });
+  const action = useMutation({ mutationFn: ({ id, verb }: { id: string; verb: string }) => postData(`/vms/${id}/${verb}`), onSuccess: () => Promise.all([qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['storage'] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['project'] }), qc.invalidateQueries({ queryKey: ['monitoring-summary'] })]) });
   return <>
     <PageHeader title="Virtual machines" subtitle="VMs and lifecycle actions for projects you can access."
       actions={<Link className="btn btn-primary btn-sm" to="/vms/new"><Plus size={15} className="me-1" />Create VM</Link>} />

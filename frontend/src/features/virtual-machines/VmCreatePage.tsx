@@ -29,7 +29,7 @@ export default function VmCreatePage() {
     if (projects.data?.length) setForm((f) => ({ ...f, project_id: searchParams.get('project_id') || f.project_id || projects.data![0].project_id }));
   }, [projects.data, searchParams]);
   const create = useMutation({ mutationFn: (body: Record<string, unknown>) => postData<CreatedVm>('/vms', body), onSuccess: async (vm) => {
-    await Promise.all([queryClient.invalidateQueries({ queryKey: ['vms'] }), queryClient.invalidateQueries({ queryKey: ['projects'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] }), queryClient.invalidateQueries({ queryKey: ['monitoring-summary'] })]);
+    await Promise.all([queryClient.invalidateQueries({ queryKey: ['vms'] }), queryClient.invalidateQueries({ queryKey: ['storage'] }), queryClient.invalidateQueries({ queryKey: ['projects'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] }), queryClient.invalidateQueries({ queryKey: ['monitoring-summary'] })]);
     toast.success(`VM “${vm.name}” was created and is provisioning.`);
     navigate(`/vms/${vm.vm_id}`);
   }, onError: (e) => setError(e instanceof ApiError ? e.message : 'Could not create the VM.') });

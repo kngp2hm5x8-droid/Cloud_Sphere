@@ -74,6 +74,32 @@ router.get('/quotas', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Read-only storage inventory. Scope volume and snapshot rows through their owning project,
+// keeping the database's organization boundary intact for every customer request.
+router.get('/volumes', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT v.volume_id,v.project_id,p.name AS project_name,v.region_id,r.code AS region_code,
+        v.vm_id,vm.name AS vm_name,v.name,v.size_gb,v.used_gb,v.volume_type,v.is_root,v.state,v.created_at
+      FROM storage_volume v JOIN project p USING(project_id)
+      JOIN cloud_region r USING(region_id) LEFT JOIN virtual_machine vm USING(vm_id)
+      WHERE v.state <> 'DELETED' AND ($1::boolean OR p.organization_id=$2)
+      ORDER BY v.created_at DESC,v.volume_id DESC`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/snapshots', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT s.snapshot_id,s.volume_id,v.project_id,p.name AS project_name,
+        v.name AS volume_name,vm.name AS vm_name,s.name,s.status,s.size_gb,s.taken_at,s.retention_days,s.expires_at,s.created_at
+      FROM backup_snapshot s JOIN storage_volume v USING(volume_id) JOIN project p USING(project_id)
+      LEFT JOIN virtual_machine vm USING(vm_id)
+      WHERE ($1::boolean OR p.organization_id=$2)
+      ORDER BY s.taken_at DESC,s.snapshot_id DESC`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
 router.get('/dashboard/summary', async (req, res, next) => {
   try {
     if (req.user.role === 'admin') {

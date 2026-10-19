@@ -23,7 +23,7 @@ export default function VmDetailPage() {
     setConfirmTerminate(false);
     const pastTense = { start: 'started', stop: 'stopped', terminate: 'terminated' }[verb] ?? verb;
     toast.success(`Virtual machine ${pastTense} successfully.`);
-    await Promise.all([qc.invalidateQueries({ queryKey: ['vm', vmId] }), qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['metrics', vmId] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['monitoring-summary'] })]);
+    await Promise.all([qc.invalidateQueries({ queryKey: ['vm', vmId] }), qc.invalidateQueries({ queryKey: ['vms'] }), qc.invalidateQueries({ queryKey: ['storage'] }), qc.invalidateQueries({ queryKey: ['metrics', vmId] }), qc.invalidateQueries({ queryKey: ['dashboard'] }), qc.invalidateQueries({ queryKey: ['monitoring-summary'] })]);
   } });
   const allowed: string[] = vm.data?.state === 'RUNNING' ? ['stop', 'terminate'] : vm.data?.state === 'STOPPED' ? ['start', 'terminate'] : vm.data && !['TERMINATED','FAILED','PREEMPTED'].includes(vm.data.state) ? ['terminate'] : [];
   return <>
