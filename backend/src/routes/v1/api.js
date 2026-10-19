@@ -216,7 +216,7 @@ router.get('/monitoring/summary', async (req, res, next) => {
 
 router.get('/notifications/unread-count', async (req, res, next) => {
   try {
-    const { rows } = await query(`SELECT count(*)::int AS unread_count FROM notification_queue WHERE user_id=$1 AND read_at IS NULL AND status='SENT'`, [req.user.user_id]);
+    const { rows } = await query(`SELECT count(*)::int AS count FROM notification_queue WHERE user_id=$1 AND read_at IS NULL AND status='SENT'`, [req.user.user_id]);
     res.json({ data: rows[0] });
   } catch (error) { next(error); }
 });

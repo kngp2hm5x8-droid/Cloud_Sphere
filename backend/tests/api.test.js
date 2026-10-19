@@ -87,7 +87,7 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok((await fetch(`${base}/api/v1/regions`, { headers })).ok);
   assert.ok((await fetch(`${base}/api/v1/configurations`, { headers })).ok);
   assert.ok((await fetch(`${base}/api/v1/quotas`, { headers })).ok);
-  const unreadCount = (await (await fetch(`${base}/api/v1/notifications/unread-count`, { headers })).json()).data.unread_count;
+  const unreadCount = (await (await fetch(`${base}/api/v1/notifications/unread-count`, { headers })).json()).data.count;
   assert.ok(Number.isInteger(unreadCount) && unreadCount >= 0, 'unread notification count should be a non-negative integer');
 
   for (const action of ['stop', 'start', 'terminate']) {

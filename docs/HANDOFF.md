@@ -292,6 +292,7 @@ Implemented in the local checkout:
 
 - Express `/api/v1` routes for login, current user, logout, projects, dashboard, regions, VM configurations, quotas, VM cost estimate/create/list/detail/lifecycle, metrics, monitoring summary, and unread notification count.
 - `/api/v1/health` and `/api/v1/ready`; the existing `/api/health/db` requires authentication and returns a generic status without public database details.
+- The unread-notification endpoint returns `{ data: { count } }`, matching the existing Topbar contract.
 - HTTP-only signed session cookie, CSRF cookie/header validation, tenant ownership filtering, consistent SQLSTATE error mapping. VM creation continues to use the existing `allocate_resource` and `complete_provisioning` procedures; allocator logic remains in PostgreSQL.
 - Stage 2 demo frontend: login, project list/detail, VM create wizard, VM list/detail and lifecycle controls, dashboard, and monitoring charts. The owner ran the app locally and confirmed the demo looked good. Other modules remain placeholders.
 - `backend/tests/api.test.js` covers the API workflow; the existing database suite covers allocation safety, concurrency, lifecycle, monitoring partitions, privileges, and seed behavior.
