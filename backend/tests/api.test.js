@@ -35,6 +35,7 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/v1/sla-records`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/recommendations`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/spot-requests`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/notifications`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -240,6 +241,31 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok((await fetch(`${base}/api/v1/quotas`, { headers })).ok);
   const unreadCount = (await (await fetch(`${base}/api/v1/notifications/unread-count`, { headers })).json()).data.count;
   assert.ok(Number.isInteger(unreadCount) && unreadCount >= 0, 'unread notification count should be a non-negative integer');
+
+  const notificationIds = (await adminPool.query(`INSERT INTO notification_queue
+    (user_id,notification_type,title,payload,status,read_at,sent_at)
+    VALUES ($1,'TEST_MESSAGE','Unread test message','{"vm_id":1}'::jsonb,'SENT',NULL,now()),
+      ($1,'TEST_MESSAGE','Read test message',NULL,'SENT',now(),now()),
+      ($2,'TEST_MESSAGE','Foreign tenant message',NULL,'SENT',NULL,now()),
+      ($1,'TEST_MESSAGE','Queued message',NULL,'PENDING',NULL,NULL)
+    RETURNING notification_id,user_id`, [user.user_id, fx.bob])).rows;
+  const notificationsResponse = await fetch(`${base}/api/v1/notifications`, { headers });
+  assert.equal(notificationsResponse.status, 200);
+  const notifications = (await notificationsResponse.json()).data;
+  assert.equal(notifications.length, 2, 'only this user’s sent notifications should be listed');
+  assert.ok(notifications.some((item) => item.title === 'Unread test message' && item.payload.vm_id === 1));
+  assert.ok(!notifications.some((item) => item.title === 'Foreign tenant message' || item.title === 'Queued message'));
+  const currentUnreadCount = (await (await fetch(`${base}/api/v1/notifications/unread-count`, { headers })).json()).data.count;
+  assert.equal(currentUnreadCount, 1);
+  const sentOwnIds = notifications.filter((item) => item.title === 'Unread test message');
+  assert.equal(sentOwnIds.length, 1);
+  const markRead = await fetch(`${base}/api/v1/notifications/${sentOwnIds[0].notification_id}/read`, { method: 'POST', headers: writeHeaders });
+  assert.equal(markRead.status, 200);
+  assert.ok((await markRead.json()).data.read_at);
+  assert.equal((await (await fetch(`${base}/api/v1/notifications/unread-count`, { headers })).json()).data.count, 0);
+  const foreignNotificationId = notificationIds.find((item) => item.user_id !== user.user_id).notification_id;
+  const foreignMarkRead = await fetch(`${base}/api/v1/notifications/${foreignNotificationId}/read`, { method: 'POST', headers: writeHeaders });
+  assert.equal(foreignMarkRead.status, 404, 'users cannot change another user’s notification');
 
   for (const action of ['stop', 'start', 'terminate']) {
     const response = await fetch(`${base}/api/v1/vms/${vm.vm_id}/${action}`, { method: 'POST', headers: writeHeaders });

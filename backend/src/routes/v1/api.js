@@ -402,6 +402,26 @@ router.get('/monitoring/summary', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/notifications', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT notification_id,notification_type,title,payload,read_at,sent_at,created_at
+      FROM notification_queue WHERE user_id=$1 AND status='SENT'
+      ORDER BY created_at DESC,notification_id DESC`, [req.user.user_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.post('/notifications/:notificationId/read', async (req, res, next) => {
+  const notificationId = idParam(req.params.notificationId, res); if (!notificationId) return;
+  try {
+    const { rows } = await query(`UPDATE notification_queue SET read_at=coalesce(read_at,now())
+      WHERE notification_id=$1 AND user_id=$2 AND status='SENT'
+      RETURNING notification_id,notification_type,title,payload,read_at,sent_at,created_at`, [notificationId, req.user.user_id]);
+    if (!rows[0]) return fail(res);
+    res.json({ data: rows[0] });
+  } catch (error) { next(error); }
+});
+
 router.get('/notifications/unread-count', async (req, res, next) => {
   try {
     const { rows } = await query(`SELECT count(*)::int AS count FROM notification_queue WHERE user_id=$1 AND read_at IS NULL AND status='SENT'`, [req.user.user_id]);

@@ -13,6 +13,8 @@ const TONE: Record<string, string> = {
   FULFILLED: 'success',
   CANCELLED: 'neutral',
   REJECTED: 'danger',
+  UNREAD: 'info',
+  READ: 'neutral',
   PAID: 'success',
   ISSUED: 'info',
   OVERDUE: 'danger',
