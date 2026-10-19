@@ -31,6 +31,8 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.equal((await fetch(`${base}/api/v1/firewall-rules`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/load-balancers`)).status, 401);
   assert.equal((await fetch(`${base}/api/v1/billing/invoices`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/carbon-profiles`)).status, 401);
+  assert.equal((await fetch(`${base}/api/v1/sla-records`)).status, 401);
 
   const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
   assert.equal(csrfResponse.status, 200);
@@ -85,6 +87,29 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   assert.ok((await list.json()).data.some((item) => item.vm_id === vm.vm_id));
   const detail = await fetch(`${base}/api/v1/vms/${vm.vm_id}`, { headers });
   assert.equal((await detail.json()).data.name, 'api-web-1');
+
+  const carbonProfilesResponse = await fetch(`${base}/api/v1/carbon-profiles`, { headers });
+  assert.equal(carbonProfilesResponse.status, 200);
+  const carbonProfiles = (await carbonProfilesResponse.json()).data;
+  assert.equal(carbonProfiles.length, 2);
+  assert.equal(carbonProfiles[0].region_code, 'eu-north-1', 'profiles should be ordered by current carbon intensity');
+  assert.equal(Number(carbonProfiles[0].carbon_intensity_gco2_kwh), 30);
+
+  const foreignVm = (await adminPool.query(`INSERT INTO virtual_machine (project_id,vm_configuration_id,name,state)
+    SELECT $1,vm_configuration_id,'foreign-sla-vm','FAILED' FROM virtual_machine WHERE vm_id=$2
+    RETURNING vm_id`, [fx.globexProj, vm.vm_id])).rows[0];
+  for (const vmId of [vm.vm_id, foreignVm.vm_id]) {
+    await adminPool.query(`INSERT INTO sla_record (vm_id,subscription_plan_id,period_start,period_end,target_uptime_pct,
+      measured_uptime_pct,expected_samples,received_samples,downtime_minutes)
+      VALUES ($1,$2,now()-interval '7 days',now(),99.990,99.603,2016,2008,40)`, [vmId, fx.plan]);
+  }
+  const slaResponse = await fetch(`${base}/api/v1/sla-records`, { headers });
+  assert.equal(slaResponse.status, 200);
+  const slaRecords = (await slaResponse.json()).data;
+  assert.equal(slaRecords.length, 1, 'SLA records must be scoped to the signed-in organization');
+  assert.equal(slaRecords[0].vm_name, 'api-web-1');
+  assert.equal(slaRecords[0].is_breach, true);
+  assert.equal(slaRecords[0].received_samples, 2008);
 
   const tenantNetwork = (await adminPool.query(`INSERT INTO virtual_network (project_id,region_id,name,cidr_block)
     VALUES ($1,$2,'api-vpc','10.20.0.0/16') RETURNING virtual_network_id`, [project.project_id, fx.eu])).rows[0];

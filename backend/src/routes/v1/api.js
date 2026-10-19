@@ -74,6 +74,35 @@ router.get('/quotas', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/carbon-profiles', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT cp.carbon_profile_id, r.region_id, r.code AS region_code, r.name AS region_name,
+        r.country, cp.version, cp.carbon_intensity_gco2_kwh, cp.effective_from, cp.effective_to
+      FROM carbon_profile cp JOIN cloud_region r USING (region_id)
+      WHERE r.is_active AND cp.effective_to IS NULL
+      ORDER BY cp.carbon_intensity_gco2_kwh, r.name`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/sla-records', async (req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT s.sla_record_id, s.vm_id, vm.name AS vm_name, vm.project_id, p.name AS project_name,
+        r.code AS region_code, r.name AS region_name, plan.name AS plan_name,
+        s.period_start, s.period_end, s.target_uptime_pct, s.measured_uptime_pct, s.expected_samples,
+        s.received_samples, s.downtime_minutes, s.is_breach, s.computed_at
+      FROM sla_record s
+      JOIN virtual_machine vm USING (vm_id)
+      JOIN project p USING (project_id)
+      JOIN subscription_plan plan ON plan.plan_id = s.subscription_plan_id
+      LEFT JOIN cloud_host h ON h.host_id = vm.host_id
+      LEFT JOIN cloud_region r ON r.region_id = h.region_id
+      WHERE ($1::boolean OR p.organization_id = $2)
+      ORDER BY s.period_end DESC, s.sla_record_id DESC`, [req.user.role === 'admin', req.user.organization_id]);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
 // Read-only storage inventory. Scope volume and snapshot rows through their owning project,
 // keeping the database's organization boundary intact for every customer request.
 router.get('/volumes', async (req, res, next) => {
