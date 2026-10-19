@@ -16,6 +16,6 @@ See the Phase 0 steps in the conversation; summary:
 4. `npm run dev`, then `curl localhost:4000/api/health` and `curl localhost:4000/api/health/db`
 
 ## Record your versions here
-node: ?   npm: ?   PostgreSQL: ?   (run `node -v`, `npm -v`, `psql --version`)
+node: v26.7.0   npm: 12.0.2  PostgreSQL: psql (PostgreSQL) 18.6 (Homebrew)  (run `node -v`, `npm -v`, `psql --version`)
 
 Never commit `.env` files or secrets.
