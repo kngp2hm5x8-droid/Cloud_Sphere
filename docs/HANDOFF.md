@@ -305,6 +305,13 @@ Verification reported by the owner:
 - Local browser demo: owner reported it is working and the screens look good.
 - Earlier implementation checks: frontend `npm run typecheck` and `npm run build` passed; JavaScript `node --check` passed.
 
+Final verification pass in the Codex execution environment:
+
+- Backend `npm test`: **72 passed, 0 failed**. The API test includes login, project access/creation, VM create/list/detail/metrics/lifecycle, dashboard, monitoring summary, regions, configurations, quotas, unread count, CSRF rejection, and logout.
+- A read-only development database check found the Alice demo account, 3 Acme projects, 12 VMs, and 6,088 monitoring samples.
+- Frontend `npm run typecheck` and `npm run build` passed. Vite still warns that the main JavaScript chunk exceeds 500 kB.
+- A final browser walkthrough could not be completed here: the local app servers were not running, process startup could not bind the required localhost ports, and opening `http://localhost:5173` returned `ERR_CONNECTION_REFUSED`. This does not overturn the owner's earlier report that the local demo worked, but this final browser recheck remains unverified.
+
 The API integration test now explicitly points the Express app at `TEST_DATABASE_URL` before importing the app, matching the test fixture database and avoiding accidental API writes to `DATABASE_URL` during tests.
 
 **Git status:** the core implementation and handoff are committed and pushed to GitHub `main`. The local `backend/.env` is ignored and was not included. Never commit local environment files or secrets.

@@ -18,6 +18,8 @@
 - [x] Owner started the application locally and confirmed the demo workflow looks good in the browser.
 - [x] The API integration test points the Express app at `TEST_DATABASE_URL`, the same isolated database reset by its fixtures.
 - [x] Unread notification count response uses the existing frontend `{ count }` contract; the API integration test checks it.
+- [x] Final read-only development database check found the Alice demo account, 3 Acme projects, 12 VMs, and 6,088 monitoring samples.
+- [ ] Final browser recheck in the Codex environment was blocked because local servers were not running and localhost returned `ERR_CONNECTION_REFUSED`. The owner's earlier local browser check was successful.
 
 Codex could not rerun the PostgreSQL-backed suite in its execution environment; test results above are recorded from the owner's terminal output. Frontend typecheck and production build were rerun during final review and passed.
 
