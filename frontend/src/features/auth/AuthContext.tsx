@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import axios from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
-import { ApiError, getData, postData, setUnauthorizedHandler } from '@/lib/api-client';
+import { ApiError, ensureCsrf, getData, postData, setUnauthorizedHandler } from '@/lib/api-client';
 import type { User } from '@/types/api';
 
 type AuthStatus = 'loading' | 'authenticated' | 'anonymous' | 'unavailable';
@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const login = useCallback(async (email: string, password: string) => {
+    await ensureCsrf();
     const me = await postData<User>('/auth/login', { email, password });
     setUser(me);
     setError(null);

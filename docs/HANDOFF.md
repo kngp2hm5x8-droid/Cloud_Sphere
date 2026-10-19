@@ -226,9 +226,9 @@ Seed script runs as the migrator, idempotent (skips if `Acme Robotics` exists). 
 
 ## 11. Current milestone and next steps
 
-The owner confirmed that the local app runs in the browser and reported the main demo flows looked good. They ran `npm test` from `backend`: **72 tests passed, 0 failed**. The API workflow test passed separately as well. The local implementation has not yet been committed or pushed; see Section 15. Do not treat this checkout's uncommitted implementation as already present on GitHub.
+The owner confirmed that the local app runs in the browser and reported the main demo flows looked good. They ran `npm test` from `backend`: **72 tests passed, 0 failed**. The API workflow test passed separately as well. The core API and demo implementation is now committed and pushed to `main` with this handoff update. Keep `.env` out of Git.
 
-The next action is for the owner to review and commit/push the implementation when ready. Keep `.env` out of Git. The optional background-processing phase and other explicitly deferred features remain out of scope for this milestone.
+The optional background-processing phase and other explicitly deferred features remain out of scope for this milestone.
 
 **Constraints the API layer must respect (found while reviewing the routines):**
 - `0008_grants.sql` grants the API role `EXECUTE` on `complete_provisioning`, `fail_provisioning` and `preempt_vm`, and none of the three checks who is calling (only `stop_vm`, `start_vm`, `terminate_vm` and `allocate_resource` authorise the user against the project). **Express must enforce who may trigger them**: `complete_provisioning` only server-side straight after a successful allocation; `fail_provisioning` and `preempt_vm` admin-only or system-only. Never expose them as customer endpoints.
@@ -306,7 +306,7 @@ Verification reported by the owner:
 
 The API integration test now explicitly points the Express app at `TEST_DATABASE_URL` before importing the app, matching the test fixture database and avoiding accidental API writes to `DATABASE_URL` during tests.
 
-**Git status:** implementation files in this checkout are modified/untracked and have not yet been committed or pushed. This handoff update should not imply that the implementation is already on GitHub. Never commit `backend/.env` or secrets.
+**Git status:** the core implementation and handoff are committed and pushed to GitHub `main`. The local `backend/.env` is ignored and was not included. Never commit local environment files or secrets.
 
 **Deferred/not implemented:** migration 0009/background jobs, worker, `GET /jobs/:id`, monitoring bulk ingestion, request classifier, idempotency, advanced rate limiting, backpressure, circuit breakers, complete metrics subsystem, performance benchmarking, and OpenAPI documentation.
 

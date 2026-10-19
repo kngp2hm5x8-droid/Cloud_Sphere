@@ -33,6 +33,24 @@ export const api = axios.create({
   headers: { 'X-Requested-With': 'CloudSphere' },
 });
 
+function readCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  const part = document.cookie.split('; ').find((item) => item.startsWith(prefix));
+  return part ? decodeURIComponent(part.slice(prefix.length)) : null;
+}
+
+api.interceptors.request.use((config) => {
+  const token = readCookie('cloudsphere_csrf');
+  if (token && !['get', 'head', 'options'].includes((config.method ?? 'get').toLowerCase())) {
+    config.headers.set('X-CSRF-Token', token);
+  }
+  return config;
+});
+
+export async function ensureCsrf(signal?: AbortSignal): Promise<void> {
+  await api.get('/auth/csrf', { signal });
+}
+
 let unauthorizedHandler: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: (() => void) | null) {
   unauthorizedHandler = fn;

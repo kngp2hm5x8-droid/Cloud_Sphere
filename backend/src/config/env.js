@@ -13,4 +13,10 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL,
   dbPoolMax: Number(process.env.DB_POOL_MAX ?? 10),
   corsOrigin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+  jwtSecret: process.env.JWT_SECRET ?? '',
+  cookieSecure: process.env.COOKIE_SECURE === 'true',
 };
+
+if (env.jwtSecret.length < 32 || /replace|change.?me|generate/i.test(env.jwtSecret)) {
+  throw new Error('JWT_SECRET must be set to at least 32 characters.');
+}

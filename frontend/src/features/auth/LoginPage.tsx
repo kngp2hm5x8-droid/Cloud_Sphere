@@ -50,6 +50,7 @@ export default function LoginPage() {
           <div className="cs-brand-mark mx-auto mb-2"><Cloud size={20} color="#fff" aria-hidden /></div>
           <h1 className="h4 mb-1">Sign in to CloudSphere</h1>
           <p className="text-muted small mb-0">Academic cloud-management simulation</p>
+          {import.meta.env.DEV && <p className="small text-muted mt-2 mb-0">Demo account: <strong>alice@acme.test</strong> · password <strong>Demo@12345</strong></p>}
         </div>
 
         {serverError && <div className="alert alert-danger py-2 small" role="alert">{serverError}</div>}
