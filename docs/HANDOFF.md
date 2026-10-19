@@ -2,6 +2,8 @@
 
 Prepared by Claude on 2026-10-19, **updated later the same day after the database layer was built, run and pushed**. Read this whole file first, then continue from **Section 11 (Next steps)**. Do not ask the owner to re-approve decisions in Section 5; they are final.
 
+**Current status note:** Sections 11–14 contain historical plans and notes. Section 15 is the latest implementation and verification record and supersedes earlier API/frontend status claims.
+
 ---
 
 ## 1. Project and owner
@@ -222,18 +224,11 @@ Seed script runs as the migrator, idempotent (skips if `Acme Robotics` exists). 
 
 ---
 
-## 11. Next steps (in order)
+## 11. Current milestone and next steps
 
-**Done and verified by the owner on their Mac (PG18):** migrations 0001-0008 applied to dev and test databases; demo seed ran with its built-in reconciliation reporting zero differences; **all 71 tests pass** (`npm test`); committed and pushed as `c2c1c8a` (the patched `partitions.test.js` was copied in and the full suite re-run green before that commit).
+The owner confirmed that the local app runs in the browser and reported the main demo flows looked good. They ran `npm test` from `backend`: **72 tests passed, 0 failed**. The API workflow test passed separately as well. The local implementation has not yet been committed or pushed; see Section 15. Do not treat this checkout's uncommitted implementation as already present on GitHub.
 
-Remaining, in order:
-
-1. **Backend foundation + auth.** `npm install jsonwebtoken cookie-parser`. Mount `/api/v1` next to `/api/health`. Add `JWT_SECRET`/`COOKIE_SECURE` to `env.js`, `.env` and `.env.example`. Auth middleware that re-loads the user from the DB on every request (active flag, organization), role middleware, the `X-Requested-With` CSRF check on non-GET requests, zod validation, SQLSTATE -> HTTP error mapping (Section 6 table; 40P01/40001 are retried by the caller, 23505 -> 409). Endpoints: `POST /auth/login` (password check in SQL with `crypt`), `GET /auth/me`, `POST /auth/logout`.
-2. **Endpoints in the priority order of Section 9**, starting with `GET /dashboard/summary`, projects, `GET /regions|/configurations|/quotas`, then `POST /vms` (allocate + complete_provisioning), `GET /vms`, `GET /vms/:id`, `POST /vms/:id/start|stop|terminate`, `POST /vms/estimate` (wraps `estimate_vm_cost`), `GET /vms/:id/metrics`, `GET /monitoring/summary`, `GET /hosts` (admin), `GET /notifications/unread-count`. Test each against the seeded dev database with curl/Postman and add `supertest`-free API tests only if time allows (do not add libraries for purity).
-3. **Frontend Stage 2** on the existing scaffold (do not rebuild it): login, dashboard, projects, VM list/detail with lifecycle actions, the 7-step provisioning wizard, monitoring charts from `monitoring_log`. Run `npm run typecheck` and `npm run build` after each significant change.
-4. Update `docs/phase1-schema-design.md` for D2-retain; refresh `README.md` (PostgreSQL version, scripts, demo accounts, API list, how to run tests); update `docs/CHECKLIST.md`; update `.env.example`.
-5. Test the central workflow in the real stack (login -> project -> request VM -> inspect -> monitoring) and report exactly what works and what remains disconnected.
-6. Remind the owner to commit and push regularly, and never commit `.env`.
+The next action is for the owner to review and commit/push the implementation when ready. Keep `.env` out of Git. The optional background-processing phase and other explicitly deferred features remain out of scope for this milestone.
 
 **Constraints the API layer must respect (found while reviewing the routines):**
 - `0008_grants.sql` grants the API role `EXECUTE` on `complete_provisioning`, `fail_provisioning` and `preempt_vm`, and none of the three checks who is calling (only `stop_vm`, `start_vm`, `terminate_vm` and `allocate_resource` authorise the user against the project). **Express must enforce who may trigger them**: `complete_provisioning` only server-side straight after a successful allocation; `fail_provisioning` and `preempt_vm` admin-only or system-only. Never expose them as customer endpoints.
@@ -263,7 +258,9 @@ Remaining, in order:
 
 ---
 
-## 13. Verification status summary (be honest about this)
+## 13. Historical verification status
+
+The table below reflects the earlier database-only milestone and has been superseded for API/frontend status by Section 15.
 
 | Item | Verified how |
 |---|---|
@@ -273,9 +270,9 @@ Remaining, in order:
 | Demo seed | **Run by the owner** with `npm run seed`; it printed that reconciliation shows no differences; `seed.test.js` also passes |
 | Test suite | **Owner ran `npm test`: 71 tests, 71 pass, 0 fail** (allocation, concurrency, lifecycle, partitions, privileges, seed). First run had 2 failures caused by a time-zone bug in the test helper (not in the database); fixed and re-run green |
 | Concurrency/invariant tests | Included in the 71: 12 tenants racing for 4 slots, 15 parallel requests for 5 quota slots, racing terminations, 10 concurrent terminates of one VM; all passed with 0 deadlock/serialization retries needed in the owner's run |
-| Frontend <-> backend auth | **Not tested** (backend auth not built) |
-| Any `/api/v1` endpoint | **Not built** |
-| Frontend Stage 2 | **Not started** |
+| Frontend <-> backend auth | Superseded by Section 15 |
+| Any `/api/v1` endpoint | Superseded by Section 15 |
+| Frontend Stage 2 | Superseded by Section 15 |
 
 Claude's own sandbox had no PostgreSQL and no network this session, so Claude executed nothing itself: it only read the files and syntax-checked the JavaScript. Every pass above comes from the owner's terminal output.
 
@@ -286,5 +283,31 @@ Claude's own sandbox had no PostgreSQL and no network this session, so Claude ex
 ## 14. Sandbox helper (Claude's environment only)
 
 An earlier session had a throwaway PostgreSQL 16 in Claude's sandbox. The session that wrote this revision had **no PostgreSQL and no network access** in the sandbox, so do not assume Claude can run the database: verify with the owner's terminal output. If a future sandbox does allow it: `apt-get update && apt-get install -y postgresql`, `pg_ctlcluster 16 main start`, create the roles and database from `database/scripts/00_bootstrap.sql` / `01_bootstrap_test_db.sql`, then use `npm run migrate:test` and `npm test` with the `TEST_*` variables pointing at it.
+
+---
+
+## 15. Current API, demo, and verification status (2026-10-19)
+
+Implemented in the local checkout:
+
+- Express `/api/v1` routes for login, current user, logout, projects, dashboard, regions, VM configurations, quotas, VM cost estimate/create/list/detail/lifecycle, metrics, monitoring summary, and unread notification count.
+- `/api/v1/health` and `/api/v1/ready`; the existing `/api/health/db` requires authentication and returns a generic status without public database details.
+- HTTP-only signed session cookie, CSRF cookie/header validation, tenant ownership filtering, consistent SQLSTATE error mapping. VM creation continues to use the existing `allocate_resource` and `complete_provisioning` procedures; allocator logic remains in PostgreSQL.
+- Stage 2 demo frontend: login, project list/detail, VM create wizard, VM list/detail and lifecycle controls, dashboard, and monitoring charts. The owner ran the app locally and confirmed the demo looked good. Other modules remain placeholders.
+- `backend/tests/api.test.js` covers the API workflow; the existing database suite covers allocation safety, concurrency, lifecycle, monitoring partitions, privileges, and seed behavior.
+
+Verification reported by the owner:
+
+- `npm run migrate:test`: completed; migrations 0001–0008 were already current.
+- `node --test tests/api.test.js`: passed (1 test, 0 failures).
+- `npm test`: passed (**72 tests, 0 failures**).
+- Local browser demo: owner reported it is working and the screens look good.
+- Earlier implementation checks: frontend `npm run typecheck` and `npm run build` passed; JavaScript `node --check` passed.
+
+The API integration test now explicitly points the Express app at `TEST_DATABASE_URL` before importing the app, matching the test fixture database and avoiding accidental API writes to `DATABASE_URL` during tests.
+
+**Git status:** implementation files in this checkout are modified/untracked and have not yet been committed or pushed. This handoff update should not imply that the implementation is already on GitHub. Never commit `backend/.env` or secrets.
+
+**Deferred/not implemented:** migration 0009/background jobs, worker, `GET /jobs/:id`, monitoring bulk ingestion, request classifier, idempotency, advanced rate limiting, backpressure, circuit breakers, complete metrics subsystem, performance benchmarking, and OpenAPI documentation.
 
 ---
