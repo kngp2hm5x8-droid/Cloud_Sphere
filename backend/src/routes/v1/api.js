@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../../db/pool.js';
-import { requireAuth, requireCsrf } from '../../middleware/auth.js';
+import { requireAuth, requireCsrf, requireRole } from '../../middleware/auth.js';
 
 const router = Router();
 router.use(requireAuth, (req, res, next) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method) ? next() : requireCsrf(req, res, next));
@@ -13,6 +13,143 @@ const idParam = (value, res) => {
 };
 const fail = (res, code = 'NOT_FOUND', message = 'Resource not found.') => res.status(404).json({ error: { code, message } });
 const projectScope = (user, alias = 'p') => user.role === 'admin' ? 'TRUE' : `${alias}.organization_id = $1`;
+
+router.get('/hosts', requireRole('admin'), async (_req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT h.host_id,h.region_id,r.code AS region_code,r.name AS region_name,
+        h.hostname,h.total_cpu,h.allocated_cpu,h.free_cpu,h.total_ram_gb,h.allocated_ram_gb,h.free_ram_gb,
+        h.status,h.low_capacity_threshold_pct,h.created_at,h.updated_at
+      FROM cloud_host h JOIN cloud_region r USING(region_id)
+      ORDER BY r.name,h.hostname`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.patch('/hosts/:hostId/status', requireRole('admin'), async (req, res, next) => {
+  const hostId = idParam(req.params.hostId, res); if (!hostId) return;
+  const parsed = z.object({
+    status: z.enum(['ACTIVE','DRAINING','MAINTENANCE','DECOMMISSIONED']).optional(),
+    low_capacity_threshold_pct: z.number().min(0).max(100).finite().optional(),
+  }).refine((value) => Object.keys(value).length > 0).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Host status or capacity threshold is invalid.' } });
+  try {
+    const current = await query('SELECT host_id,status,allocated_cpu,allocated_ram_gb FROM cloud_host WHERE host_id=$1', [hostId]);
+    if (!current.rows[0]) return fail(res);
+    if (parsed.data.status === 'DECOMMISSIONED' && (current.rows[0].allocated_cpu > 0 || current.rows[0].allocated_ram_gb > 0)) {
+      return res.status(409).json({ error: { code: 'HOST_IN_USE', message: 'A host with allocated resources cannot be decommissioned.' } });
+    }
+    const fields = Object.entries(parsed.data);
+    const values = [hostId, req.user.user_id];
+    const setters = fields.map(([key, value]) => {
+      values.push(value);
+      return `${key}=$${values.length}`;
+    });
+    const { rows } = await query(`WITH prior AS (
+        SELECT * FROM cloud_host WHERE host_id=$1 FOR UPDATE
+      ), changed AS (
+        UPDATE cloud_host h SET ${setters.join(',')}
+        FROM prior old WHERE h.host_id=old.host_id
+          AND (COALESCE($${values.length + 1},'') <> 'DECOMMISSIONED' OR (h.allocated_cpu=0 AND h.allocated_ram_gb=0))
+        RETURNING h.*
+      ), logged AS (
+        INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,old_values,new_values)
+        SELECT $2,'UPDATE','cloud_host',changed.host_id,
+          jsonb_build_object('status',prior.status,'low_capacity_threshold_pct',prior.low_capacity_threshold_pct),
+          jsonb_build_object('status',changed.status,'low_capacity_threshold_pct',changed.low_capacity_threshold_pct)
+        FROM changed JOIN prior USING(host_id) RETURNING audit_id
+      )
+      SELECT changed.host_id,changed.region_id,changed.hostname,changed.total_cpu,changed.allocated_cpu,changed.free_cpu,
+        changed.total_ram_gb,changed.allocated_ram_gb,changed.free_ram_gb,changed.status,
+        changed.low_capacity_threshold_pct,changed.updated_at,region.code AS region_code,region.name AS region_name
+      FROM changed JOIN cloud_region region USING(region_id) CROSS JOIN logged`, [...values, parsed.data.status ?? null]);
+    if (!rows[0]) return res.status(409).json({ error: { code: 'HOST_IN_USE', message: 'Host state changed or the host has allocated resources.' } });
+    res.json({ data: rows[0] });
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/organizations', requireRole('admin'), async (_req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT o.organization_id,o.name,o.billing_email,o.status,o.created_at,
+        plan.name AS plan_name,count(DISTINCT u.user_id)::int AS user_count,count(DISTINCT p.project_id)::int AS project_count,
+        count(DISTINCT vm.vm_id)::int AS vm_count
+      FROM organization o JOIN subscription_plan plan ON plan.plan_id=o.subscription_plan_id
+      LEFT JOIN app_user u USING(organization_id) LEFT JOIN project p USING(organization_id)
+      LEFT JOIN virtual_machine vm USING(project_id)
+      GROUP BY o.organization_id,plan.name ORDER BY o.name`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/users', requireRole('admin'), async (_req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT u.user_id,u.organization_id,o.name AS organization_name,u.email,u.full_name,
+        u.role,u.is_active,u.last_login_at,u.created_at
+      FROM app_user u LEFT JOIN organization o USING(organization_id)
+      ORDER BY (u.role='admin') DESC,o.name NULLS FIRST,u.full_name`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.get('/admin/audit', requireRole('admin'), async (_req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT a.audit_id,a.actor_user_id,u.full_name AS actor_name,a.action,
+        a.entity_type,a.entity_id,a.old_values,a.new_values,a.created_at
+      FROM audit_log a LEFT JOIN app_user u ON u.user_id=a.actor_user_id
+      ORDER BY a.created_at DESC,a.audit_id DESC LIMIT 250`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
+router.patch('/quotas/:quotaId', requireRole('admin'), async (req, res, next) => {
+  const quotaId = idParam(req.params.quotaId, res); if (!quotaId) return;
+  const parsed = z.object({
+    max_vcpu: z.number().int().min(0).max(100000).optional(),
+    max_ram_gb: z.number().int().min(0).max(1000000).optional(),
+    max_vms: z.number().int().min(0).max(100000).optional(),
+    max_storage_gb: z.number().int().min(0).max(10000000).nullable().optional(),
+  }).refine((value) => Object.keys(value).length > 0).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Quota limits are invalid.' } });
+  try {
+    const current = await query(`SELECT q.*,p.name AS project_name,o.name AS organization_name
+      FROM resource_quota q JOIN organization o USING(organization_id)
+      LEFT JOIN project p USING(project_id) WHERE q.quota_id=$1`, [quotaId]);
+    const quota = current.rows[0];
+    if (!quota) return fail(res);
+    const next = { ...quota, ...parsed.data };
+    if (next.max_vcpu < quota.used_vcpu || next.max_ram_gb < quota.used_ram_gb || next.max_vms < quota.used_vms ||
+        (next.max_storage_gb !== null && next.max_storage_gb < quota.used_storage_gb)) {
+      return res.status(409).json({ error: { code: 'QUOTA_IN_USE', message: 'A quota limit cannot be set below its current usage.' } });
+    }
+    const fields = Object.entries(parsed.data);
+    const values = [quotaId, req.user.user_id];
+    const valueRefs = {};
+    const setters = fields.map(([key, value]) => {
+      values.push(value);
+      valueRefs[key] = `$${values.length}`;
+      return `${key}=$${values.length}`;
+    });
+    const { rows } = await query(`WITH prior AS (
+        SELECT * FROM resource_quota WHERE quota_id=$1 FOR UPDATE
+      ), changed AS (
+        UPDATE resource_quota q SET ${setters.join(',')}
+        FROM prior old WHERE q.quota_id=old.quota_id AND old.used_vcpu <= ${valueRefs.max_vcpu ?? 'old.max_vcpu'}
+          AND old.used_ram_gb <= ${valueRefs.max_ram_gb ?? 'old.max_ram_gb'}
+          AND old.used_vms <= ${valueRefs.max_vms ?? 'old.max_vms'}
+          AND (${parsed.data.max_storage_gb === null ? 'TRUE' : `old.used_storage_gb <= ${valueRefs.max_storage_gb ?? 'COALESCE(old.max_storage_gb,old.used_storage_gb)'}`})
+        RETURNING q.*
+      ), logged AS (
+        INSERT INTO audit_log (actor_user_id,action,entity_type,entity_id,old_values,new_values)
+        SELECT $2,'UPDATE','resource_quota',changed.quota_id,
+          jsonb_build_object('max_vcpu',prior.max_vcpu,'max_ram_gb',prior.max_ram_gb,'max_vms',prior.max_vms,'max_storage_gb',prior.max_storage_gb),
+          jsonb_build_object('max_vcpu',changed.max_vcpu,'max_ram_gb',changed.max_ram_gb,'max_vms',changed.max_vms,'max_storage_gb',changed.max_storage_gb)
+        FROM changed JOIN prior USING(quota_id) RETURNING audit_id
+      )
+      SELECT changed.*,o.name AS organization_name,p.name AS project_name FROM changed
+      JOIN organization o USING(organization_id) LEFT JOIN project p USING(project_id) CROSS JOIN logged`, values);
+    if (rows[0]) return res.json({ data: rows[0] });
+    return res.status(409).json({ error: { code: 'QUOTA_IN_USE', message: 'A quota limit cannot be set below current usage.' } });
+  } catch (error) { next(error); }
+});
 
 router.get('/projects', async (req, res, next) => {
   try {
@@ -122,8 +259,10 @@ router.post('/spot-requests', async (req, res, next) => {
 
 router.get('/quotas', async (req, res, next) => {
   try {
-    const { rows } = await query(`SELECT quota_id,organization_id,project_id,max_vcpu,used_vcpu,max_ram_gb,used_ram_gb,max_vms,used_vms,max_storage_gb,used_storage_gb
-      FROM resource_quota WHERE ($1::boolean OR organization_id=$2) ORDER BY project_id NULLS FIRST,quota_id`, [req.user.role === 'admin', req.user.organization_id]);
+    const { rows } = await query(`SELECT q.quota_id,q.organization_id,o.name AS organization_name,q.project_id,p.name AS project_name,
+        q.max_vcpu,q.used_vcpu,q.max_ram_gb,q.used_ram_gb,q.max_vms,q.used_vms,q.max_storage_gb,q.used_storage_gb
+      FROM resource_quota q JOIN organization o USING(organization_id) LEFT JOIN project p USING(project_id)
+      WHERE ($1::boolean OR q.organization_id=$2) ORDER BY q.project_id NULLS FIRST,q.quota_id`, [req.user.role === 'admin', req.user.organization_id]);
     res.json({ data: rows });
   } catch (error) { next(error); }
 });

@@ -304,3 +304,85 @@ test('core API workflow: auth, projects, estimate, VM lifecycle, monitoring and 
   const { rows } = await adminPool.query(`SELECT count(*)::int AS n FROM virtual_machine WHERE name='api-web-1' AND state='TERMINATED'`);
   assert.equal(rows[0].n, 1);
 });
+
+async function loginAs(email) {
+  const csrfResponse = await fetch(`${base}/api/v1/auth/csrf`);
+  const csrf = (await csrfResponse.json()).data.csrf_token;
+  const csrfCookie = csrfResponse.headers.getSetCookie().find((value) => value.startsWith('cloudsphere_csrf=')).split(';', 1)[0];
+  const login = await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: {
+    'Content-Type': 'application/json', 'X-Requested-With': 'CloudSphere', 'X-CSRF-Token': csrf, Cookie: csrfCookie,
+  }, body: JSON.stringify({ email, password: 'Demo@12345' }) });
+  assert.equal(login.status, 200);
+  const sessionCookie = login.headers.getSetCookie().find((value) => value.startsWith('cloudsphere_session=')).split(';', 1)[0];
+  const cookie = `${csrfCookie}; ${sessionCookie}`;
+  return {
+    headers: { Cookie: cookie },
+    writeHeaders: { Cookie: cookie, 'Content-Type': 'application/json', 'X-Requested-With': 'CloudSphere', 'X-CSRF-Token': csrf },
+  };
+}
+
+test('admin console APIs: authorization, host controls, organizations, users, quotas and audit', async () => {
+  const customer = await loginAs('alice@acme.test');
+  for (const path of ['/hosts', '/admin/organizations', '/admin/users', '/admin/audit']) {
+    assert.equal((await fetch(`${base}/api/v1${path}`, { headers: customer.headers })).status, 403, `${path} is admin-only`);
+  }
+  assert.equal((await fetch(`${base}/api/v1/hosts/${fx.apHost}/status`, { method: 'PATCH', headers: customer.writeHeaders,
+    body: JSON.stringify({ status: 'DRAINING' }) })).status, 403);
+  assert.equal((await fetch(`${base}/api/v1/quotas/1`, { method: 'PATCH', headers: customer.writeHeaders,
+    body: JSON.stringify({ max_vcpu: 99 }) })).status, 403);
+
+  const admin = await loginAs('admin@cloudsphere.test');
+  const organizationsResponse = await fetch(`${base}/api/v1/admin/organizations`, { headers: admin.headers });
+  assert.equal(organizationsResponse.status, 200);
+  const organizations = (await organizationsResponse.json()).data;
+  assert.deepEqual(organizations.map((item) => item.name), ['Acme', 'Globex']);
+  assert.ok(organizations.every((item) => item.user_count === 1));
+
+  const usersResponse = await fetch(`${base}/api/v1/admin/users`, { headers: admin.headers });
+  assert.equal(usersResponse.status, 200);
+  const users = (await usersResponse.json()).data;
+  assert.equal(users.length, 3);
+  assert.ok(users.some((item) => item.email === 'admin@cloudsphere.test' && item.organization_id === null));
+  assert.ok(users.every((item) => !Object.hasOwn(item, 'password_hash')));
+
+  const quotasResponse = await fetch(`${base}/api/v1/quotas`, { headers: admin.headers });
+  assert.equal(quotasResponse.status, 200);
+  const quotas = (await quotasResponse.json()).data;
+  assert.ok(quotas.some((item) => item.project_name === 'web-prod' && item.organization_name === 'Acme'));
+  const quota = quotas.find((item) => item.project_id === fx.acmeProj);
+  assert.ok(quota);
+
+  const createVm = await fetch(`${base}/api/v1/vms`, { method: 'POST', headers: admin.writeHeaders,
+    body: JSON.stringify({ project_id: String(fx.acmeProj), name: 'admin-capacity-check', vcpu: 2, ram_gb: 4, storage_gb: 20, os_image: 'ubuntu-22.04', volume_type: 'SSD' }) });
+  const createdVm = await createVm.json();
+  assert.equal(createVm.status, 201, JSON.stringify(createdVm));
+  const vm = createdVm.data;
+  const projectQuota = (await adminPool.query('SELECT * FROM resource_quota WHERE quota_id=$1', [quota.quota_id])).rows[0];
+  assert.ok(projectQuota.used_vcpu >= 2);
+  const tooSmall = await fetch(`${base}/api/v1/quotas/${quota.quota_id}`, { method: 'PATCH', headers: admin.writeHeaders,
+    body: JSON.stringify({ max_vcpu: projectQuota.used_vcpu - 1 }) });
+  assert.equal(tooSmall.status, 409);
+  const quotaUpdate = await fetch(`${base}/api/v1/quotas/${quota.quota_id}`, { method: 'PATCH', headers: admin.writeHeaders,
+    body: JSON.stringify({ max_vcpu: projectQuota.used_vcpu + 10 }) });
+  assert.equal(quotaUpdate.status, 200);
+  assert.equal((await quotaUpdate.json()).data.max_vcpu, projectQuota.used_vcpu + 10);
+
+  const hostsResponse = await fetch(`${base}/api/v1/hosts`, { headers: admin.headers });
+  assert.equal(hostsResponse.status, 200);
+  const hosts = (await hostsResponse.json()).data;
+  assert.equal(hosts.length, 2);
+  const allocatedHost = hosts.find((item) => String(item.host_id) === String(vm.host_id));
+  assert.ok(allocatedHost);
+  const blockedDecommission = await fetch(`${base}/api/v1/hosts/${allocatedHost.host_id}/status`, { method: 'PATCH', headers: admin.writeHeaders,
+    body: JSON.stringify({ status: 'DECOMMISSIONED' }) });
+  assert.equal(blockedDecommission.status, 409);
+
+  const idleHost = hosts.find((item) => String(item.host_id) !== String(allocatedHost.host_id));
+  const hostUpdate = await fetch(`${base}/api/v1/hosts/${idleHost.host_id}/status`, { method: 'PATCH', headers: admin.writeHeaders,
+    body: JSON.stringify({ status: 'DRAINING', low_capacity_threshold_pct: 18 }) });
+  assert.equal(hostUpdate.status, 200);
+  assert.equal((await hostUpdate.json()).data.status, 'DRAINING');
+  const audit = (await (await fetch(`${base}/api/v1/admin/audit`, { headers: admin.headers })).json()).data;
+  assert.ok(audit.some((item) => item.entity_type === 'cloud_host' && item.action === 'UPDATE'));
+  assert.ok(audit.some((item) => item.entity_type === 'resource_quota' && item.action === 'UPDATE'));
+});
