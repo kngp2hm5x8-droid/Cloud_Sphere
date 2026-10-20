@@ -323,7 +323,7 @@ async function loginAs(email) {
 
 test('admin console APIs: authorization, host controls, organizations, users, quotas and audit', async () => {
   const customer = await loginAs('alice@acme.test');
-  for (const path of ['/hosts', '/admin/organizations', '/admin/users', '/admin/audit']) {
+  for (const path of ['/hosts', '/admin/organizations', '/admin/users', '/admin/plans', '/admin/audit']) {
     assert.equal((await fetch(`${base}/api/v1${path}`, { headers: customer.headers })).status, 403, `${path} is admin-only`);
   }
   assert.equal((await fetch(`${base}/api/v1/hosts/${fx.apHost}/status`, { method: 'PATCH', headers: customer.writeHeaders,
@@ -344,6 +344,14 @@ test('admin console APIs: authorization, host controls, organizations, users, qu
   assert.equal(users.length, 3);
   assert.ok(users.some((item) => item.email === 'admin@cloudsphere.test' && item.organization_id === null));
   assert.ok(users.every((item) => !Object.hasOwn(item, 'password_hash')));
+
+  const plansResponse = await fetch(`${base}/api/v1/admin/plans`, { headers: admin.headers });
+  assert.equal(plansResponse.status, 200);
+  const plans = (await plansResponse.json()).data;
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].name, 'Premium');
+  assert.equal(plans[0].organization_count, 2);
+  assert.equal(plans[0].default_max_vcpu, 32);
 
   const quotasResponse = await fetch(`${base}/api/v1/quotas`, { headers: admin.headers });
   assert.equal(quotasResponse.status, 200);

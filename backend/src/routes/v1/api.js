@@ -90,6 +90,18 @@ router.get('/admin/users', requireRole('admin'), async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
+router.get('/admin/plans', requireRole('admin'), async (_req, res, next) => {
+  try {
+    const { rows } = await query(`SELECT plan.plan_id,plan.name,plan.monthly_fee,plan.price_per_vcpu_hour,
+        plan.price_per_gb_ram_hour,plan.price_per_gb_storage_month,plan.sla_uptime_target_pct,
+        plan.default_max_vcpu,plan.default_max_ram_gb,plan.default_max_vms,plan.is_active,
+        count(org.organization_id)::int AS organization_count,plan.created_at,plan.updated_at
+      FROM subscription_plan plan LEFT JOIN organization org ON org.subscription_plan_id=plan.plan_id
+      GROUP BY plan.plan_id ORDER BY plan.monthly_fee,plan.name`);
+    res.json({ data: rows });
+  } catch (error) { next(error); }
+});
+
 router.get('/admin/audit', requireRole('admin'), async (_req, res, next) => {
   try {
     const { rows } = await query(`SELECT a.audit_id,a.actor_user_id,u.full_name AS actor_name,a.action,
